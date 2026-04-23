@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Add Tenant — Rental Manager</title>
+  <link rel="stylesheet" href="/common/thirdparty/bootstrap/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/common/thirdparty/bootstrap/css/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+
+<%- include('_sidebar', { activePage: 'rooms' }) %>
+
+<div class="main-wrapper" id="mainWrapper">
+  <%- include('_topbar', { title: 'Add / Edit Tenant' }) %>
+
+  <main class="page-content">
+
+    <div class="row justify-content-center">
+      <div class="col-lg-7">
+
+        <div class="panel">
+          <div class="panel__header">
+            <h2 class="panel__title" id="formTitle">
+              <i class="bi bi-person-plus me-2"></i>New Tenant
+            </h2>
+            <a href="/rooms" class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-arrow-left me-1"></i>Back to Rooms
+            </a>
+          </div>
+          <div class="panel__body">
+
+            <form id="tenantForm">
+              <input type="hidden" id="tenantId">
+
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label">Room Number <span class="text-danger">*</span></label>
+                  <select class="form-select" id="roomId" required>
+                    <option value="">Select room…</option>
+                    <option value="1">Room 1 — Master Bedroom</option>
+                    <option value="2">Room 2</option>
+                    <option value="3">Room 3</option>
+                    <option value="4">Room 4</option>
+                  </select>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label">Tenant Name <span class="text-danger">*</span></label>
+                  <input type="text" class="form-control" id="tenantName" placeholder="Full name" required>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label">Weekly Rent ($) <span class="text-danger">*</span></label>
+                  <div class="input-group">
+                    <span class="input-group-text">$</span>
+                    <input type="number" class="form-control" id="weeklyRent" placeholder="0.00" step="0.01" min="0" required>
+                  </div>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label">Bond Amount ($)</label>
+                  <div class="input-group">
+                    <span class="input-group-text">$</span>
+                    <input type="number" class="form-control" id="bondAmount" placeholder="0.00" step="0.01" min="0">
+                  </div>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label">Move-in Date</label>
+                  <input type="date" class="form-control" id="moveIn">
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label">Move-out Date</label>
+                  <input type="date" class="form-control" id="moveOut">
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label">Status</label>
+                  <select class="form-select" id="tenantStatus">
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                  </select>
+                </div>
+
+                <div class="col-12">
+                  <label class="form-label">Notes</label>
+                  <textarea class="form-control" id="notes" rows="2" placeholder="Any additional notes…"></textarea>
+                </div>
+              </div>
+
+              <div class="alert alert-info mt-4 mb-0" id="formAlert">
+                <i class="bi bi-info-circle me-2"></i>
+                Adding a new tenant will automatically generate <strong>12 weeks</strong> of pending ledger rows.
+                <span id="alertDisplace"> Any existing active tenant in the selected room will be marked as moved out.</span>
+              </div>
+
+              <div class="d-flex gap-2 mt-4">
+                <button type="submit" class="btn btn-primary flex-grow-1" id="submitBtn">
+                  <i class="bi bi-person-check me-2"></i>Add Tenant
+                </button>
+                <a href="/rooms" class="btn btn-outline-secondary">Cancel</a>
+              </div>
+
+            </form>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<%- include('_scripts') %>
+<script>
+$(function() {
+  // Pre-fill room if ?room= param is set
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('room')) $('#roomId').val(params.get('room'));
+
+  // Edit mode
+  const editId = params.get('edit');
+  if (editId) {
+    $('#formTitle').html('<i class="bi bi-pencil me-2"></i>Edit Tenant');
+    $('#submitBtn').html('<i class="bi bi-save me-2"></i>Save Changes');
+    $('#tenantId').val(editId);
+
+    $.getJSON(`/api/tenants/${editId}`, function(res) {
+      if (!res.success) return;
+      const t = res.data;
+      $('#roomId').val(t.room_id);
+      $('#tenantName').val(t.name);
+      $('#weeklyRent').val(t.weekly_rent);
+      $('#bondAmount').val(t.bond);
+      $('#moveIn').val(t.move_in || '');
+      $('#moveOut').val(t.move_out || '');
+      $('#tenantStatus').val(t.status || 'Active');
+      $('#notes').val(t.notes || '');
+      updateAlert(t.status || 'Active');
+    });
+  }
+
+  // Dynamically update the alert when status changes
+  $('#tenantStatus').on('change', function() {
+    updateAlert($(this).val());
+  });
+
+  function updateAlert(status) {
+    if (status === 'Inactive') {
+      $('#alertDisplace').hide();
+      $('#formAlert').removeClass('alert-info').addClass('alert-secondary');
+    } else {
+      $('#alertDisplace').show();
+      $('#formAlert').removeClass('alert-secondary').addClass('alert-info');
+    }
+  }
+
+  $('#tenantForm').on('submit', function(e) {
+    e.preventDefault();
+    const editId = $('#tenantId').val();
+    const data = {
+      room_id:     $('#roomId').val(),
+      name:        $('#tenantName').val().trim(),
+      weekly_rent: $('#weeklyRent').val(),
+      bond:        $('#bondAmount').val() || 0,
+      move_in:     $('#moveIn').val() || null,
+      move_out:    $('#moveOut').val() || null,
+      status:      $('#tenantStatus').val(),
+      notes:       $('#notes').val(),
+    };
+
+    if (editId) {
+      $.ajax({
+        url: `/api/tenants/${editId}`,
+        method: 'PUT',
+        contentType: 'application/json',
+        data: JSON.stringify(data),
+        success: function(res) {
+          if (res.success) {
+            showToast('Tenant updated successfully', 'success');
+            setTimeout(() => window.location.href = '/rooms', 1000);
+          } else {
+            showToast(res.error || 'Error updating tenant', 'error');
+          }
+        }
+      });
+    } else {
+      $.ajax({
+        url: '/api/tenants',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(data),
+        success: function(res) {
+          if (res.success) {
+            showToast('Tenant added & ledger created!', 'success');
+            setTimeout(() => window.location.href = `/tenant/${res.data.id}`, 1200);
+          } else {
+            showToast(res.error || 'Error adding tenant', 'error');
+          }
+        }
+      });
+    }
+  });
+});
+</script>
+</body>
+</html>

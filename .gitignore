@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Database (contains personal/tenant data)
+db/
+
+# Build output
+dist/
+out/
+
+# Electron builder cache
+.webpack/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Local input/scratch files
+input.txt
+
+# OS files
+.DS_Store
+Thumbs.db
