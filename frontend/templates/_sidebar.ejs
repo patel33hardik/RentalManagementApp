@@ -1,0 +1,59 @@
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <div class="brand-icon">
+      <i class="bi bi-building"></i>
+    </div>
+    <div class="brand-text">
+      <span class="brand-name">RentalMgr</span>
+      <span class="brand-sub">Property Manager</span>
+    </div>
+  </div>
+
+  <div class="sidebar-divider"></div>
+
+  <ul class="sidebar-nav">
+    <li class="nav-label">MAIN MENU</li>
+
+    <li class="nav-item">
+      <a href="/dashboard" class="nav-link <%= activePage === 'dashboard' ? 'active' : '' %>">
+        <i class="bi bi-speedometer2"></i>
+        <span>Dashboard</span>
+      </a>
+    </li>
+
+    <li class="nav-item">
+      <a href="/rooms" class="nav-link <%= activePage === 'rooms' ? 'active' : '' %>">
+        <i class="bi bi-door-open"></i>
+        <span>Rooms</span>
+      </a>
+    </li>
+
+    <li class="nav-item">
+      <a href="/bond" class="nav-link <%= activePage === 'bond' ? 'active' : '' %>">
+        <i class="bi bi-safe2"></i>
+        <span>Bond</span>
+      </a>
+    </li>
+
+    <li class="nav-item">
+      <a href="/expenses" class="nav-link <%= activePage === 'expenses' ? 'active' : '' %>">
+        <i class="bi bi-receipt"></i>
+        <span>Expenses</span>
+      </a>
+    </li>
+
+    <li class="nav-label mt-2">ADMIN</li>
+
+    <li class="nav-item">
+      <a href="/database" class="nav-link <%= activePage === 'database' ? 'active' : '' %>">
+        <i class="bi bi-database"></i>
+        <span>Database</span>
+      </a>
+    </li>
+  </ul>
+
+  <div class="sidebar-footer">
+    <div class="footer-date" id="sidebarDate"></div>
+    <div class="footer-version">v1.0.0</div>
+  </div>
+</nav>

@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bond Manager — Rental Manager</title>
+  <link rel="stylesheet" href="/common/thirdparty/bootstrap/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/common/thirdparty/bootstrap/css/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+
+<%- include('_sidebar', { activePage: 'bond' }) %>
+
+<div class="main-wrapper" id="mainWrapper">
+  <%- include('_topbar', { title: 'Bond Manager' }) %>
+
+  <main class="page-content">
+
+    <!-- Summary Cards -->
+    <div class="row g-4 mb-4">
+      <div class="col-md-4">
+        <div class="stat-card stat-card--income">
+          <div class="stat-card__icon"><i class="bi bi-safe2"></i></div>
+          <div class="stat-card__body">
+            <div class="stat-card__label">Total Collected</div>
+            <div class="stat-card__value" id="bondCollected">—</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="stat-card stat-card--expense">
+          <div class="stat-card__icon"><i class="bi bi-arrow-return-left"></i></div>
+          <div class="stat-card__body">
+            <div class="stat-card__label">Total Refunded</div>
+            <div class="stat-card__value" id="bondRefunded">—</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="stat-card stat-card--profit">
+          <div class="stat-card__icon"><i class="bi bi-wallet2"></i></div>
+          <div class="stat-card__body">
+            <div class="stat-card__label">Currently Held</div>
+            <div class="stat-card__value" id="bondHeld">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Table 1: Currently Held -->
+    <div class="panel mb-4">
+      <div class="panel__header">
+        <h2 class="panel__title"><i class="bi bi-shield-check me-2"></i>Active Bond Records</h2>
+        <button class="btn btn-sm btn-primary" onclick="openModal(null)">
+          <i class="bi bi-plus-lg me-1"></i>Add Record
+        </button>
+      </div>
+      <div class="panel__body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0" id="activeTable">
+            <thead>
+              <tr>
+                <th>Tenant</th>
+                <th>Room</th>
+                <th>Collected Date</th>
+                <th>Amount</th>
+                <th>Bank Reference</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="6" class="text-center py-3 text-muted">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Table 2: Refunded -->
+    <div class="panel">
+      <div class="panel__header">
+        <h2 class="panel__title"><i class="bi bi-box-arrow-right me-2"></i>Moved Out — Bond Refund</h2>
+      </div>
+      <div class="panel__body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0" id="refundedTable">
+            <thead>
+              <tr>
+                <th>Tenant</th>
+                <th>Room</th>
+                <th>Collected Date</th>
+                <th>Bond Amount</th>
+                <th>Refund Date</th>
+                <th>Refund Amount</th>
+                <th>Refund Bank Ref</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="8" class="text-center py-3 text-muted">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ── Bond Modal (Add / Edit) ────────────────────────────────────────────── -->
+<div class="modal fade" id="bondModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="bondModalTitle">Add Bond Record</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="bondId">
+
+        <div class="mb-3" id="tenantRow">
+          <label class="form-label">Tenant <span class="text-danger">*</span></label>
+          <select class="form-select" id="bondTenant">
+            <option value="">Select tenant…</option>
+          </select>
+        </div>
+
+        <p class="text-uppercase text-muted small fw-semibold mb-2" style="letter-spacing:.06em">Bond Collected</p>
+        <div class="row g-3 mb-3">
+          <div class="col-md-6">
+            <label class="form-label">Collected Date <span class="text-danger">*</span></label>
+            <input type="date" class="form-control" id="bondDate">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Amount ($) <span class="text-danger">*</span></label>
+            <div class="input-group">
+              <span class="input-group-text">$</span>
+              <input type="number" class="form-control" id="bondAmount" step="0.01" min="0">
+            </div>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Bank Reference</label>
+            <input type="text" class="form-control" id="bondBankRef" placeholder="e.g. Bond Room 1">
+          </div>
+        </div>
+
+        <hr class="my-3">
+        <p class="text-uppercase text-muted small fw-semibold mb-2" style="letter-spacing:.06em">Bond Refunded <span class="fw-normal text-muted">(leave blank if not yet refunded)</span></p>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Refund Date</label>
+            <input type="date" class="form-control" id="bondRefundDate">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Refund Amount ($)</label>
+            <div class="input-group">
+              <span class="input-group-text">$</span>
+              <input type="number" class="form-control" id="bondRefundAmount" step="0.01" min="0">
+            </div>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Refund Bank Reference</label>
+            <input type="text" class="form-control" id="bondRefundBankRef" placeholder="Optional">
+          </div>
+        </div>
+
+        <div class="mt-3">
+          <label class="form-label">Notes</label>
+          <input type="text" class="form-control" id="bondNotes" placeholder="Optional">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="saveBondBtn">
+          <i class="bi bi-save me-1"></i>Save
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%- include('_scripts') %>
+<script>
+const bondModal = new bootstrap.Modal('#bondModal');
+let allRows = [];
+
+function isoToday() {
+  const t = new Date();
+  return t.getFullYear() + '-' + String(t.getMonth()+1).padStart(2,'0') + '-' + String(t.getDate()).padStart(2,'0');
+}
+
+$(function() {
+  loadAll();
+
+  $.getJSON('/api/tenants', function(res) {
+    if (!res.success) return;
+    res.data.forEach(function(t) {
+      $('#bondTenant').append(`<option value="${t.id}">Room ${t.room_number} — ${t.name}</option>`);
+    });
+  });
+
+  $('#saveBondBtn').on('click', saveBond);
+});
+
+function loadAll() {
+  $.getJSON('/api/bond', function(res) {
+    if (!res.success) return;
+    allRows = res.data;
+
+    // Stats
+    let collected = 0, refunded = 0;
+    allRows.forEach(function(b) {
+      collected += Number(b.amount) || 0;
+      if (b.refund_date) refunded += Number(b.refund_amount) || Number(b.amount) || 0;
+    });
+    $('#bondCollected').text(fmt(collected));
+    $('#bondRefunded').text(fmt(refunded));
+    $('#bondHeld').text(fmt(collected - refunded));
+
+    // Split: no refund_date → Table 1, has refund_date → Table 2
+    const active   = allRows.filter(function(b) { return !b.refund_date; });
+    const refundedRows = allRows.filter(function(b) { return !!b.refund_date; });
+
+    renderActive(active);
+    renderRefunded(refundedRows);
+  });
+}
+
+function renderActive(rows) {
+  const tbody = $('#activeTable tbody').empty();
+  if (!rows.length) {
+    tbody.html('<tr><td colspan="6" class="text-center text-muted py-3">No active bond records</td></tr>');
+    return;
+  }
+  rows.forEach(function(b) {
+    tbody.append(`<tr>
+      <td class="fw-semibold">${b.tenant_name}</td>
+      <td><span class="room-badge">Room ${b.room_number}</span></td>
+      <td class="text-muted small">${fmtDate(b.date)}</td>
+      <td class="fw-semibold">${fmt(b.amount)}</td>
+      <td class="text-muted small">${b.bank_ref || '—'}</td>
+      <td class="text-end">
+        <button class="btn btn-xs btn-outline-primary me-1" onclick="openModal(${b.id})">
+          <i class="bi bi-pencil"></i>
+        </button>
+        <button class="btn btn-xs btn-outline-danger" onclick="deleteRecord(${b.id})">
+          <i class="bi bi-trash"></i>
+        </button>
+      </td>
+    </tr>`);
+  });
+}
+
+function renderRefunded(rows) {
+  const tbody = $('#refundedTable tbody').empty();
+  if (!rows.length) {
+    tbody.html('<tr><td colspan="8" class="text-center text-muted py-3">No refunded bonds</td></tr>');
+    return;
+  }
+  rows.forEach(function(b) {
+    tbody.append(`<tr>
+      <td class="fw-semibold">${b.tenant_name}</td>
+      <td><span class="room-badge">Room ${b.room_number}</span></td>
+      <td class="text-muted small">${fmtDate(b.date)}</td>
+      <td>${fmt(b.amount)}</td>
+      <td class="text-muted small">${fmtDate(b.refund_date)}</td>
+      <td class="fw-semibold text-success">${b.refund_amount ? fmt(b.refund_amount) : '—'}</td>
+      <td class="text-muted small">${b.refund_bank_ref || '—'}</td>
+      <td class="text-end">
+        <button class="btn btn-xs btn-outline-primary me-1" onclick="openModal(${b.id})">
+          <i class="bi bi-pencil"></i>
+        </button>
+        <button class="btn btn-xs btn-outline-danger" onclick="deleteRecord(${b.id})">
+          <i class="bi bi-trash"></i>
+        </button>
+      </td>
+    </tr>`);
+  });
+}
+
+function openModal(id) {
+  if (id) {
+    const b = allRows.find(function(x) { return x.id === id; });
+    if (!b) return;
+    $('#bondModalTitle').text('Edit Bond Record — ' + b.tenant_name);
+    $('#bondId').val(b.id);
+    $('#tenantRow').hide();
+    $('#bondDate').val(b.date || '');
+    $('#bondAmount').val(b.amount || '');
+    $('#bondBankRef').val(b.bank_ref || '');
+    $('#bondRefundDate').val(b.refund_date || '');
+    $('#bondRefundAmount').val(b.refund_amount || '');
+    $('#bondRefundBankRef').val(b.refund_bank_ref || '');
+    $('#bondNotes').val(b.notes || '');
+  } else {
+    $('#bondModalTitle').text('Add Bond Record');
+    $('#bondId').val('');
+    $('#tenantRow').show();
+    $('#bondTenant').val('');
+    $('#bondDate').val(isoToday());
+    $('#bondAmount').val('');
+    $('#bondBankRef').val('');
+    $('#bondRefundDate').val('');
+    $('#bondRefundAmount').val('');
+    $('#bondRefundBankRef').val('');
+    $('#bondNotes').val('');
+  }
+  bondModal.show();
+}
+
+function saveBond() {
+  const id     = $('#bondId').val();
+  const date   = $('#bondDate').val();
+  const amount = $('#bondAmount').val();
+  if (!date || !amount) { showToast('Collected date and amount are required', 'error'); return; }
+
+  const data = {
+    date:             date,
+    amount:           amount,
+    bank_ref:         $('#bondBankRef').val(),
+    refund_date:      $('#bondRefundDate').val() || null,
+    refund_amount:    $('#bondRefundAmount').val() || null,
+    refund_bank_ref:  $('#bondRefundBankRef').val(),
+    notes:            $('#bondNotes').val(),
+  };
+
+  if (id) {
+    $.ajax({ url: `/api/bond/${id}`, method: 'PUT', contentType: 'application/json',
+      data: JSON.stringify(data),
+      success: function(res) {
+        if (res.success) { bondModal.hide(); showToast('Bond record updated', 'success'); loadAll(); }
+        else showToast(res.error || 'Error', 'error');
+      }
+    });
+  } else {
+    data.tenant_id = $('#bondTenant').val();
+    if (!data.tenant_id) { showToast('Please select a tenant', 'error'); return; }
+    $.ajax({ url: '/api/bond', method: 'POST', contentType: 'application/json',
+      data: JSON.stringify(data),
+      success: function(res) {
+        if (res.success) { bondModal.hide(); showToast('Bond record added', 'success'); loadAll(); }
+        else showToast(res.error || 'Error', 'error');
+      }
+    });
+  }
+}
+
+function deleteRecord(id) {
+  if (!confirm('Delete this bond record? This cannot be undone.')) return;
+  $.ajax({ url: `/api/bond/${id}`, method: 'DELETE',
+    success: function(res) {
+      if (res.success) { showToast('Deleted', 'success'); loadAll(); }
+    }
+  });
+}
+</script>
+</body>
+</html>

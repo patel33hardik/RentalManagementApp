@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tenant Ledger — Rental Manager</title>
+  <link rel="stylesheet" href="/common/thirdparty/bootstrap/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/common/thirdparty/bootstrap/css/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+
+<%- include('_sidebar', { activePage: 'rooms' }) %>
+
+<div class="main-wrapper" id="mainWrapper">
+  <%- include('_topbar', { title: 'Tenant Ledger' }) %>
+
+  <main class="page-content">
+
+    <!-- Tenant Summary Header -->
+    <div class="panel mb-4" id="tenantHeader">
+      <div class="panel__body">
+        <div class="d-flex align-items-center gap-4">
+          <div class="tenant-avatar tenant-avatar--lg" id="tenantAvatar">?</div>
+          <div class="flex-grow-1">
+            <h2 class="mb-1" id="tenantNameHeader">Loading…</h2>
+            <div class="d-flex gap-3 text-muted small" id="tenantMeta"></div>
+          </div>
+          <div class="d-flex gap-3" id="tenantStatsMini"></div>
+          <div>
+            <a href="/rooms" class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-arrow-left me-1"></i>Back
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ledger Table -->
+    <div class="panel">
+      <div class="panel__header">
+        <h2 class="panel__title"><i class="bi bi-journal-text me-2"></i>Weekly Ledger</h2>
+        <button class="btn btn-sm btn-primary" id="addWeekBtn">
+          <i class="bi bi-plus-lg me-1"></i>Add Week
+        </button>
+      </div>
+      <div class="panel__body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0" id="ledgerTable">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Period</th>
+                <th>Amount ($)</th>
+                <th>Bank Reference</th>
+                <th>Pay Date</th>
+                <th>Status</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="7" class="text-center py-4 text-muted">Loading ledger…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel__footer d-flex justify-content-between align-items-center">
+        <div class="text-muted small" id="ledgerSummary"></div>
+        <div id="ledgerTotal" class="fw-bold"></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Edit Ledger Row Modal -->
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Edit Ledger Entry</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editId">
+        <div class="mb-3">
+          <label class="form-label">Amount ($)</label>
+          <input type="number" class="form-control" id="editAmount" step="0.01" min="0">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Bank Reference</label>
+          <input type="text" class="form-control" id="editBankRef">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Pay Date</label>
+          <input type="date" class="form-control" id="editPayDate">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Status</label>
+          <select class="form-select" id="editStatus">
+            <option value="Pending">Pending</option>
+            <option value="✓ Paid">✓ Paid</option>
+            <option value="Waived">Waived</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Notes</label>
+          <input type="text" class="form-control" id="editNotes">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="saveEditBtn">Save Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%- include('_scripts') %>
+<script>
+const TENANT_ID = <%= tenantId %>;
+const editModal = new bootstrap.Modal('#editModal');
+let ledgerRows = [];
+let tenantData  = {};
+
+$(function() {
+  loadTenant();
+  loadLedger();
+
+  $('#saveEditBtn').on('click', saveEdit);
+  $('#addWeekBtn').on('click', addWeek);
+});
+
+function loadTenant() {
+  $.getJSON(`/api/tenants/${TENANT_ID}`, function(res) {
+    if (!res.success) return;
+    const t = res.data;
+    tenantData = t;
+    $('#tenantAvatar').text(t.name.charAt(0).toUpperCase());
+    $('#tenantNameHeader').text(t.name);
+    $('#tenantMeta').html(`
+      <span><i class="bi bi-door-open me-1"></i>Room ${t.room_number}</span>
+      <span><i class="bi bi-calendar me-1"></i>Since ${fmtDate(t.move_in)}</span>
+      <span><i class="bi bi-circle-fill me-1 ${t.status === 'Active' ? 'text-success' : 'text-secondary'}"></i>${t.status}</span>
+    `);
+    $('#tenantStatsMini').html(`
+      <div class="text-center">
+        <div class="fw-bold fs-5">${fmt(t.weekly_rent)}</div>
+        <div class="text-muted small">Weekly Rent</div>
+      </div>
+      <div class="text-center">
+        <div class="fw-bold fs-5">${fmt(t.total_received)}</div>
+        <div class="text-muted small">Total Received</div>
+      </div>
+      <div class="text-center">
+        <div class="fw-bold fs-5">${fmt(t.bond)}</div>
+        <div class="text-muted small">Bond</div>
+      </div>
+    `);
+  });
+}
+
+function loadLedger() {
+  $.getJSON(`/api/ledger?tenant_id=${TENANT_ID}`, function(res) {
+    if (!res.success) return;
+    ledgerRows = res.data;
+    const tbody = $('#ledgerTable tbody');
+    tbody.empty();
+
+    let totalPaid = 0, totalPending = 0, paidCount = 0;
+
+    if (res.data.length === 0) {
+      tbody.html('<tr><td colspan="7" class="text-center text-muted">No ledger entries yet</td></tr>');
+      return;
+    }
+
+    res.data.forEach(function(row, i) {
+      const isPaid = row.status === '✓ Paid';
+      if (isPaid) { totalPaid += (row.amount || 0); paidCount++; }
+      else if (row.status === 'Pending') totalPending += 0;
+
+      const rowClass = isPaid ? 'row-paid' : (row.status === 'Pending' ? 'row-pending' : 'row-waived');
+      tbody.append(`
+        <tr class="${rowClass}" data-id="${row.id}">
+          <td class="text-muted">${i + 1}</td>
+          <td>${fmtDate(row.start_date)} <span class="text-muted">→</span> ${fmtDate(row.end_date)}</td>
+          <td>${row.amount ? fmt(row.amount) : '<span class="text-muted">—</span>'}</td>
+          <td class="text-muted small">${row.bank_ref || '—'}</td>
+          <td class="text-muted small">${row.pay_date ? fmtDate(row.pay_date) : '—'}</td>
+          <td><span class="status-badge ${isPaid ? 'badge-paid' : row.status === 'Waived' ? 'badge-waived' : 'badge-pending'}">${row.status}</span></td>
+          <td class="text-end">
+            <button class="btn btn-xs btn-outline-primary me-1" onclick="openEdit(${row.id})">
+              <i class="bi bi-pencil"></i>
+            </button>
+            ${isPaid ? '' : `
+              <button class="btn btn-xs btn-success me-1" onclick="markPaid(${row.id})">
+                <i class="bi bi-check-lg"></i>
+              </button>
+            `}
+            <button class="btn btn-xs btn-outline-danger" onclick="deleteLedger(${row.id})">
+              <i class="bi bi-trash"></i>
+            </button>
+          </td>
+        </tr>
+      `);
+    });
+
+    $('#ledgerSummary').text(`${paidCount} weeks paid · ${res.data.length - paidCount} pending`);
+    $('#ledgerTotal').html(`Total Received: <span class="text-success">${fmt(totalPaid)}</span>`);
+  });
+}
+
+function openEdit(id) {
+  const row = ledgerRows.find(function(r) { return r.id === id; });
+  if (!row) return;
+  $('#editId').val(row.id);
+  $('#editAmount').val(row.amount || '');
+  $('#editBankRef').val(row.bank_ref || '');
+  $('#editPayDate').val(row.pay_date || '');
+  $('#editStatus').val(row.status);
+  $('#editNotes').val(row.notes || '');
+  editModal.show();
+}
+
+function saveEdit() {
+  const id = $('#editId').val();
+  $.ajax({
+    url: `/api/ledger/${id}`,
+    method: 'PUT',
+    contentType: 'application/json',
+    data: JSON.stringify({
+      amount:   $('#editAmount').val(),
+      bank_ref: $('#editBankRef').val(),
+      pay_date: $('#editPayDate').val(),
+      status:   $('#editStatus').val(),
+      notes:    $('#editNotes').val(),
+    }),
+    success: function(res) {
+      if (res.success) {
+        editModal.hide();
+        showToast('Entry updated', 'success');
+        loadLedger();
+        loadTenant();
+      }
+    }
+  });
+}
+
+// Add N days to a YYYY-MM-DD string without any UTC conversion
+function addDays(isoStr, days) {
+  const [y, m, d] = isoStr.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  date.setDate(date.getDate() + days);
+  return date.getFullYear() + '-' +
+    String(date.getMonth() + 1).padStart(2, '0') + '-' +
+    String(date.getDate()).padStart(2, '0');
+}
+
+// Today's date as YYYY-MM-DD in local time
+function isoToday() {
+  const t = new Date();
+  return t.getFullYear() + '-' +
+    String(t.getMonth() + 1).padStart(2, '0') + '-' +
+    String(t.getDate()).padStart(2, '0');
+}
+
+function markPaid(id) {
+  const row = ledgerRows.find(r => r.id === id);
+  if (!row) return;
+  $.ajax({
+    url: `/api/ledger/${id}`,
+    method: 'PUT',
+    contentType: 'application/json',
+    data: JSON.stringify({
+      amount:   tenantData.weekly_rent,
+      bank_ref: row.bank_ref || `Room ${tenantData.room_number} Rent`,
+      pay_date: isoToday(),
+      status:   '✓ Paid',
+      notes:    row.notes || '',
+    }),
+    success: function(res) {
+      if (res.success) { showToast('Marked as paid ✓', 'success'); loadLedger(); loadTenant(); }
+    }
+  });
+}
+
+function deleteLedger(id) {
+  if (!confirm('Delete this ledger entry? This cannot be undone.')) return;
+  $.ajax({
+    url: `/api/ledger/${id}`,
+    method: 'DELETE',
+    success: function(res) {
+      if (res.success) { showToast('Entry deleted', 'success'); loadLedger(); loadTenant(); }
+    }
+  });
+}
+
+function addWeek() {
+  let startIso;
+  if (ledgerRows.length > 0) {
+    startIso = addDays(ledgerRows[ledgerRows.length - 1].end_date, 1);
+  } else {
+    startIso = tenantData.move_in || isoToday();
+  }
+
+  $.ajax({
+    url: '/api/ledger',
+    method: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify({
+      tenant_id:  TENANT_ID,
+      start_date: startIso,
+      end_date:   addDays(startIso, 6),
+      pay_date:   startIso,
+      status:     'Pending',
+    }),
+    success: function(res) {
+      if (res.success) { showToast('New week added', 'success'); loadLedger(); }
+    }
+  });
+}
+</script>
+</body>
+</html>

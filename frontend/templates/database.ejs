@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Database — Rental Manager</title>
+  <link rel="stylesheet" href="/common/thirdparty/bootstrap/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/common/thirdparty/bootstrap/css/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="/static/css/app.css">
+  <style>
+    .db-tabs .nav-link { font-size: 13px; font-weight: 500; color: #64748b; }
+    .db-tabs .nav-link.active { color: var(--color-primary); border-bottom: 2px solid var(--color-primary); background: none; }
+    .db-tabs { border-bottom: 1px solid var(--color-border); margin-bottom: 20px; }
+    .table td, .table th { white-space: nowrap; }
+    .table td.wrap { white-space: normal; max-width: 200px; }
+    .filter-bar { background: #f8fafc; border-bottom: 1px solid var(--color-border); padding: 10px 20px; display: flex; align-items: center; gap: 12px; }
+    .filter-bar label { font-size: 12px; font-weight: 600; color: #64748b; margin: 0; }
+    .filter-bar select { font-size: 13px; padding: 4px 8px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); width: 220px; }
+    .record-count { font-size: 12px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+
+<%- include('_sidebar', { activePage: 'database' }) %>
+
+<div class="main-wrapper" id="mainWrapper">
+  <%- include('_topbar', { title: 'Database' }) %>
+
+  <main class="page-content">
+
+    <ul class="nav db-tabs" id="dbTabs">
+      <li class="nav-item">
+        <a class="nav-link active" data-bs-toggle="tab" href="#tabRooms">
+          <i class="bi bi-door-open me-1"></i>Rooms
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tabTenants">
+          <i class="bi bi-people me-1"></i>Tenants
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tabLedger">
+          <i class="bi bi-journal-text me-1"></i>Ledger
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tabBond">
+          <i class="bi bi-safe2 me-1"></i>Bond Payments
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tabExpenses">
+          <i class="bi bi-receipt me-1"></i>Expenses
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tabBackup">
+          <i class="bi bi-cloud-arrow-down me-1"></i>Backup
+        </a>
+      </li>
+    </ul>
+
+    <div class="tab-content">
+
+      <!-- ── ROOMS ───────────────────────────────────────────── -->
+      <div class="tab-pane fade show active" id="tabRooms">
+        <div class="panel">
+          <div class="panel__header">
+            <h2 class="panel__title"><i class="bi bi-door-open me-2"></i>rooms <span class="record-count" id="roomCount"></span></h2>
+            <button class="btn btn-sm btn-primary" onclick="openRoomModal()">
+              <i class="bi bi-plus-lg me-1"></i>Add Room
+            </button>
+          </div>
+          <div class="panel__body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover mb-0" id="roomsTable">
+                <thead><tr><th>ID</th><th>Room #</th><th>Description</th><th class="text-end">Actions</th></tr></thead>
+                <tbody><tr><td colspan="4" class="text-center py-3 text-muted">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── TENANTS ─────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="tabTenants">
+        <div class="panel">
+          <div class="panel__header">
+            <h2 class="panel__title"><i class="bi bi-people me-2"></i>tenants <span class="record-count" id="tenantCount"></span></h2>
+            <a href="/add-tenant" class="btn btn-sm btn-primary">
+              <i class="bi bi-plus-lg me-1"></i>Add Tenant
+            </a>
+          </div>
+          <div class="panel__body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover mb-0" id="tenantsTable">
+                <thead>
+                  <tr>
+                    <th>ID</th><th>Room</th><th>Name</th><th>Weekly Rent</th><th>Bond</th>
+                    <th>Move-in</th><th>Move-out</th><th>Status</th><th>Notes</th>
+                    <th class="text-end">Actions</th>
+                  </tr>
+                </thead>
+                <tbody><tr><td colspan="10" class="text-center py-3 text-muted">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── LEDGER ──────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="tabLedger">
+        <div class="panel">
+          <div class="panel__header">
+            <h2 class="panel__title"><i class="bi bi-journal-text me-2"></i>ledger <span class="record-count" id="ledgerCount"></span></h2>
+            <button class="btn btn-sm btn-primary" onclick="openLedgerModal()">
+              <i class="bi bi-plus-lg me-1"></i>Add Entry
+            </button>
+          </div>
+          <div class="filter-bar">
+            <label>Filter by Tenant:</label>
+            <select id="ledgerTenantFilter" onchange="loadLedger()">
+              <option value="">All Tenants</option>
+            </select>
+          </div>
+          <div class="panel__body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover mb-0" id="ledgerTable">
+                <thead>
+                  <tr>
+                    <th>ID</th><th>Room</th><th>Tenant</th><th>Start</th><th>End</th>
+                    <th>Amount</th><th>Bank Ref</th><th>Pay Date</th><th>Status</th><th>Notes</th>
+                    <th class="text-end">Actions</th>
+                  </tr>
+                </thead>
+                <tbody><tr><td colspan="11" class="text-center py-3 text-muted">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── BOND PAYMENTS ───────────────────────────────────── -->
+      <div class="tab-pane fade" id="tabBond">
+        <div class="panel">
+          <div class="panel__header">
+            <h2 class="panel__title"><i class="bi bi-safe2 me-2"></i>bond_payments <span class="record-count" id="bondCount"></span></h2>
+            <button class="btn btn-sm btn-primary" onclick="openBondModal()">
+              <i class="bi bi-plus-lg me-1"></i>Add Record
+            </button>
+          </div>
+          <div class="panel__body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover mb-0" id="bondTable">
+                <thead>
+                  <tr>
+                    <th>ID</th><th>Room</th><th>Tenant</th>
+                    <th>Collected Date</th><th>Amount</th><th>Bank Ref</th>
+                    <th>Refund Date</th><th>Refund Amt</th><th>Refund Bank Ref</th>
+                    <th>Notes</th><th class="text-end">Actions</th>
+                  </tr>
+                </thead>
+                <tbody><tr><td colspan="11" class="text-center py-3 text-muted">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── EXPENSES ────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="tabExpenses">
+        <div class="panel">
+          <div class="panel__header">
+            <h2 class="panel__title"><i class="bi bi-receipt me-2"></i>expenses <span class="record-count" id="expenseCount"></span></h2>
+            <button class="btn btn-sm btn-primary" onclick="openExpenseModal()">
+              <i class="bi bi-plus-lg me-1"></i>Add Expense
+            </button>
+          </div>
+          <div class="panel__body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover mb-0" id="expensesTable">
+                <thead>
+                  <tr>
+                    <th>ID</th><th>Date</th><th>Description</th><th>Category</th>
+                    <th>Amount</th><th>Notes</th>
+                    <th class="text-end">Actions</th>
+                  </tr>
+                </thead>
+                <tbody><tr><td colspan="7" class="text-center py-3 text-muted">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── BACKUP ─────────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="tabBackup">
+        <div class="row g-4">
+
+          <!-- Export -->
+          <div class="col-md-6">
+            <div class="panel">
+              <div class="panel__header">
+                <h2 class="panel__title"><i class="bi bi-download me-2"></i>Export Database</h2>
+              </div>
+              <div class="panel__body">
+                <p class="text-muted small mb-3">Download the current database as a <code>.db</code> file. Use this to create a backup before making large changes.</p>
+                <a href="/api/db/export" class="btn btn-primary">
+                  <i class="bi bi-download me-2"></i>Download Database
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Import -->
+          <div class="col-md-6">
+            <div class="panel">
+              <div class="panel__header">
+                <h2 class="panel__title"><i class="bi bi-upload me-2"></i>Import Database</h2>
+              </div>
+              <div class="panel__body">
+                <div class="alert alert-warning d-flex gap-2 mb-3 py-2">
+                  <i class="bi bi-exclamation-triangle-fill mt-1 flex-shrink-0"></i>
+                  <span class="small">This will <strong>replace all current data</strong> with the contents of the uploaded file. This cannot be undone.</span>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">Select a <code>.db</code> file</label>
+                  <input type="file" class="form-control" id="importFileInput" accept=".db">
+                </div>
+                <button class="btn btn-danger" id="importBtn" disabled>
+                  <i class="bi bi-upload me-2"></i>Import &amp; Replace Database
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div><!-- /tab-content -->
+  </main>
+</div>
+
+<!-- ── ROOM MODAL ──────────────────────────────────────────────── -->
+<div class="modal fade" id="roomModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="roomModalTitle">Add Room</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="roomId">
+        <div class="mb-3">
+          <label class="form-label">Room Number <span class="text-danger">*</span></label>
+          <input type="number" class="form-control" id="roomNumber" min="1">
+        </div>
+        <div class="mb-0">
+          <label class="form-label">Description</label>
+          <input type="text" class="form-control" id="roomDesc" placeholder="e.g. Master Bedroom">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="saveRoomBtn"><i class="bi bi-save me-1"></i>Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── TENANT MODAL ────────────────────────────────────────────── -->
+<div class="modal fade" id="tenantModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="tenantModalTitle">Edit Tenant</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editTenantId">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Room <span class="text-danger">*</span></label>
+            <select class="form-select" id="editTenantRoom"></select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Status</label>
+            <select class="form-select" id="editTenantStatus">
+              <option value="Active">Active</option>
+              <option value="Inactive">Inactive</option>
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="editTenantName">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Weekly Rent ($)</label>
+            <input type="number" class="form-control" id="editTenantRent" step="0.01" min="0">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Bond ($)</label>
+            <input type="number" class="form-control" id="editTenantBond" step="0.01" min="0">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Move-in</label>
+            <input type="date" class="form-control" id="editTenantMoveIn">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Move-out</label>
+            <input type="date" class="form-control" id="editTenantMoveOut">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Notes</label>
+            <textarea class="form-control" id="editTenantNotes" rows="2"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="saveTenantBtn"><i class="bi bi-save me-1"></i>Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── LEDGER MODAL ────────────────────────────────────────────── -->
+<div class="modal fade" id="ledgerModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="ledgerModalTitle">Add Ledger Entry</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editLedgerId">
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label">Tenant <span class="text-danger">*</span></label>
+            <select class="form-select" id="editLedgerTenant"></select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Start Date <span class="text-danger">*</span></label>
+            <input type="date" class="form-control" id="editLedgerStart">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">End Date <span class="text-danger">*</span></label>
+            <input type="date" class="form-control" id="editLedgerEnd">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Amount ($)</label>
+            <input type="number" class="form-control" id="editLedgerAmount" step="0.01" min="0">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Pay Date</label>
+            <input type="date" class="form-control" id="editLedgerPayDate">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Status</label>
+            <select class="form-select" id="editLedgerStatus">
+              <option value="Pending">Pending</option>
+              <option value="✓ Paid">✓ Paid</option>
+              <option value="Waived">Waived</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Bank Reference</label>
+            <input type="text" class="form-control" id="editLedgerRef">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Notes</label>
+            <input type="text" class="form-control" id="editLedgerNotes">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="saveLedgerBtn"><i class="bi bi-save me-1"></i>Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── BOND MODAL ──────────────────────────────────────────────── -->
+<div class="modal fade" id="bondModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="bondModalTitle">Add Bond Record</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editBondId">
+        <div class="row g-3">
+          <div class="col-12" id="editBondTenantRow">
+            <label class="form-label">Tenant <span class="text-danger">*</span></label>
+            <select class="form-select" id="editBondTenant"></select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Collected Date <span class="text-danger">*</span></label>
+            <input type="date" class="form-control" id="editBondDate">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Amount ($) <span class="text-danger">*</span></label>
+            <input type="number" class="form-control" id="editBondAmount" step="0.01" min="0">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Bank Reference</label>
+            <input type="text" class="form-control" id="editBondRef">
+          </div>
+          <div class="col-12"><hr class="my-1"></div>
+          <div class="col-md-6">
+            <label class="form-label">Refund Date</label>
+            <input type="date" class="form-control" id="editBondRefundDate">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Refund Amount ($)</label>
+            <input type="number" class="form-control" id="editBondRefundAmount" step="0.01" min="0">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Refund Bank Reference</label>
+            <input type="text" class="form-control" id="editBondRefundRef">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Notes</label>
+            <input type="text" class="form-control" id="editBondNotes">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="saveBondBtn"><i class="bi bi-save me-1"></i>Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── EXPENSE MODAL ───────────────────────────────────────────── -->
+<div class="modal fade" id="expenseModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="expenseModalTitle">Add Expense</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editExpenseId">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Date <span class="text-danger">*</span></label>
+            <input type="date" class="form-control" id="editExpDate">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Category</label>
+            <select class="form-select" id="editExpCategory">
+              <option value="Utilities">Utilities</option>
+              <option value="Maintenance">Maintenance</option>
+              <option value="Insurance">Insurance</option>
+              <option value="Council Rates">Council Rates</option>
+              <option value="General">General</option>
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Description <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="editExpDesc">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Amount ($) <span class="text-danger">*</span></label>
+            <input type="number" class="form-control" id="editExpAmount" step="0.01" min="0">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Notes</label>
+            <input type="text" class="form-control" id="editExpNotes">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="saveExpenseBtn"><i class="bi bi-save me-1"></i>Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%- include('_scripts') %>
+<script>
+// ── Modals ───────────────────────────────────────────────────────
+const mRoom    = new bootstrap.Modal('#roomModal');
+const mTenant  = new bootstrap.Modal('#tenantModal');
+const mLedger  = new bootstrap.Modal('#ledgerModal');
+const mBond    = new bootstrap.Modal('#bondModal');
+const mExpense = new bootstrap.Modal('#expenseModal');
+
+// ── Cached data ──────────────────────────────────────────────────
+let roomRows    = [], tenantRows = [], ledgerRows = [], bondRows = [], expenseRows = [];
+let allTenants  = []; // for dropdown population
+
+function isoToday() {
+  const t = new Date();
+  return t.getFullYear() + '-' + String(t.getMonth()+1).padStart(2,'0') + '-' + String(t.getDate()).padStart(2,'0');
+}
+
+function actionBtns(editFn, delFn) {
+  return `<div class="d-flex justify-content-end gap-1">
+    <button class="btn btn-xs btn-outline-primary" onclick="${editFn}"><i class="bi bi-pencil"></i></button>
+    <button class="btn btn-xs btn-outline-danger"  onclick="${delFn}"><i class="bi bi-trash"></i></button>
+  </div>`;
+}
+
+function confirmDelete(label, fn) {
+  if (confirm(`Delete this ${label}? This cannot be undone.`)) fn();
+}
+
+$(function() {
+  loadRooms();
+  loadTenants();
+  loadLedger();
+  loadBondPayments();
+  loadExpenses();
+  loadTenantDropdowns();
+
+  $('#saveRoomBtn').on('click',    saveRoom);
+  $('#saveTenantBtn').on('click',  saveTenant);
+  $('#saveLedgerBtn').on('click',  saveLedger);
+  $('#saveBondBtn').on('click',    saveBond);
+  $('#saveExpenseBtn').on('click', saveExpense);
+});
+
+// ════════════════════════════════════════════════════════════════
+// ROOMS
+// ════════════════════════════════════════════════════════════════
+function loadRooms() {
+  $.getJSON('/api/rooms', function(res) {
+    if (!res.success) return;
+    roomRows = res.data;
+    $('#roomCount').text(`(${res.data.length} rows)`);
+    const tbody = $('#roomsTable tbody').empty();
+    if (!res.data.length) { tbody.html('<tr><td colspan="4" class="text-center text-muted py-3">No rooms</td></tr>'); return; }
+    res.data.forEach(function(r) {
+      tbody.append(`<tr>
+        <td class="text-muted">${r.id}</td>
+        <td><span class="room-badge">Room ${r.room_number}</span></td>
+        <td>${r.description || '—'}</td>
+        <td>${actionBtns(`openRoomModal(${r.id})`, `deleteRoom(${r.id})`)}</td>
+      </tr>`);
+    });
+  });
+}
+
+function openRoomModal(id) {
+  if (id) {
+    const r = roomRows.find(x => x.id === id);
+    if (!r) return;
+    $('#roomModalTitle').text('Edit Room');
+    $('#roomId').val(r.id);
+    $('#roomNumber').val(r.room_number);
+    $('#roomDesc').val(r.description || '');
+  } else {
+    $('#roomModalTitle').text('Add Room');
+    $('#roomId').val('');
+    $('#roomNumber').val('');
+    $('#roomDesc').val('');
+  }
+  mRoom.show();
+}
+
+function saveRoom() {
+  const id = $('#roomId').val();
+  const data = { room_number: $('#roomNumber').val(), description: $('#roomDesc').val() };
+  if (!data.room_number) { showToast('Room number is required', 'error'); return; }
+  const method = id ? 'PUT' : 'POST';
+  const url    = id ? `/api/rooms/${id}` : '/api/rooms';
+  $.ajax({ url, method, contentType: 'application/json', data: JSON.stringify(data),
+    success: function(res) {
+      if (res.success) { mRoom.hide(); showToast(id ? 'Room updated' : 'Room added', 'success'); loadRooms(); loadTenantDropdowns(); }
+      else showToast(res.error || 'Error', 'error');
+    }
+  });
+}
+
+function deleteRoom(id) {
+  confirmDelete('room', function() {
+    $.ajax({ url: `/api/rooms/${id}`, method: 'DELETE',
+      success: function(res) {
+        if (res.success) { showToast('Room deleted', 'success'); loadRooms(); }
+        else showToast(res.error, 'error');
+      }
+    });
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+// TENANTS
+// ════════════════════════════════════════════════════════════════
+function loadTenants() {
+  $.getJSON('/api/tenants', function(res) {
+    if (!res.success) return;
+    tenantRows = res.data;
+    $('#tenantCount').text(`(${res.data.length} rows)`);
+    const tbody = $('#tenantsTable tbody').empty();
+    if (!res.data.length) { tbody.html('<tr><td colspan="10" class="text-center text-muted py-3">No tenants</td></tr>'); return; }
+    res.data.forEach(function(t) {
+      const badge = t.status === 'Active'
+        ? `<span class="status-badge badge-paid">Active</span>`
+        : `<span class="status-badge badge-waived">Inactive</span>`;
+      tbody.append(`<tr>
+        <td class="text-muted">${t.id}</td>
+        <td><span class="room-badge">Room ${t.room_number}</span></td>
+        <td class="fw-semibold">${t.name}</td>
+        <td>${fmt(t.weekly_rent)}</td>
+        <td>${fmt(t.bond)}</td>
+        <td class="text-muted small">${fmtDate(t.move_in)}</td>
+        <td class="text-muted small">${fmtDate(t.move_out)}</td>
+        <td>${badge}</td>
+        <td class="wrap text-muted small">${t.notes || '—'}</td>
+        <td>${actionBtns(`openTenantModal(${t.id})`, `deleteTenant(${t.id})`)}</td>
+      </tr>`);
+    });
+  });
+}
+
+function loadTenantDropdowns() {
+  $.getJSON('/api/tenants', function(res) {
+    if (!res.success) return;
+    allTenants = res.data;
+
+    // Ledger filter
+    const filter = $('#ledgerTenantFilter');
+    const prev = filter.val();
+    filter.find('option:not(:first)').remove();
+    allTenants.forEach(t => filter.append(`<option value="${t.id}">Room ${t.room_number} — ${t.name}</option>`));
+    if (prev) filter.val(prev);
+
+    // Ledger modal tenant select
+    $('#editLedgerTenant').empty();
+    allTenants.forEach(t => $('#editLedgerTenant').append(`<option value="${t.id}">Room ${t.room_number} — ${t.name}</option>`));
+
+    // Bond modal tenant select
+    $('#editBondTenant').empty();
+    allTenants.forEach(t => $('#editBondTenant').append(`<option value="${t.id}">Room ${t.room_number} — ${t.name}</option>`));
+
+    // Tenant modal room select
+    $.getJSON('/api/rooms', function(rRes) {
+      if (!rRes.success) return;
+      $('#editTenantRoom').empty();
+      rRes.data.forEach(r => $('#editTenantRoom').append(`<option value="${r.id}">Room ${r.room_number} — ${r.description || ''}</option>`));
+    });
+  });
+}
+
+function openTenantModal(id) {
+  const t = tenantRows.find(x => x.id === id);
+  if (!t) return;
+  $('#tenantModalTitle').text('Edit Tenant — ' + t.name);
+  $('#editTenantId').val(t.id);
+  $('#editTenantRoom').val(t.room_id);
+  $('#editTenantStatus').val(t.status);
+  $('#editTenantName').val(t.name);
+  $('#editTenantRent').val(t.weekly_rent);
+  $('#editTenantBond').val(t.bond);
+  $('#editTenantMoveIn').val(t.move_in || '');
+  $('#editTenantMoveOut').val(t.move_out || '');
+  $('#editTenantNotes').val(t.notes || '');
+  mTenant.show();
+}
+
+function saveTenant() {
+  const id = $('#editTenantId').val();
+  if (!id) return;
+  const data = {
+    room_id:     $('#editTenantRoom').val(),
+    name:        $('#editTenantName').val().trim(),
+    weekly_rent: $('#editTenantRent').val(),
+    bond:        $('#editTenantBond').val() || 0,
+    move_in:     $('#editTenantMoveIn').val() || null,
+    move_out:    $('#editTenantMoveOut').val() || null,
+    status:      $('#editTenantStatus').val(),
+    notes:       $('#editTenantNotes').val(),
+  };
+  if (!data.name) { showToast('Name is required', 'error'); return; }
+  $.ajax({ url: `/api/tenants/${id}`, method: 'PUT', contentType: 'application/json', data: JSON.stringify(data),
+    success: function(res) {
+      if (res.success) { mTenant.hide(); showToast('Tenant updated', 'success'); loadTenants(); loadTenantDropdowns(); }
+      else showToast(res.error || 'Error', 'error');
+    }
+  });
+}
+
+function deleteTenant(id) {
+  const t = tenantRows.find(x => x.id === id);
+  confirmDelete(`tenant "${t ? t.name : id}" and all their ledger & bond records`, function() {
+    $.ajax({ url: `/api/tenants/${id}`, method: 'DELETE',
+      success: function(res) {
+        if (res.success) { showToast('Tenant deleted', 'success'); loadTenants(); loadLedger(); loadBondPayments(); loadTenantDropdowns(); }
+        else showToast(res.error, 'error');
+      }
+    });
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+// LEDGER
+// ════════════════════════════════════════════════════════════════
+function loadLedger() {
+  const tenantId = $('#ledgerTenantFilter').val();
+  const url = tenantId ? `/api/ledger?tenant_id=${tenantId}` : '/api/ledger';
+  $.getJSON(url, function(res) {
+    if (!res.success) return;
+    ledgerRows = res.data;
+    $('#ledgerCount').text(`(${res.data.length} rows)`);
+    const tbody = $('#ledgerTable tbody').empty();
+    if (!res.data.length) { tbody.html('<tr><td colspan="11" class="text-center text-muted py-3">No entries</td></tr>'); return; }
+    res.data.forEach(function(l) {
+      const statusClass = l.status === '✓ Paid' ? 'badge-paid' : l.status === 'Waived' ? 'badge-waived' : 'badge-pending';
+      const roomNum = l.room_number != null ? `<span class="room-badge">Room ${l.room_number}</span>` : '—';
+      const tenantName = l.tenant_name || '—';
+      tbody.append(`<tr>
+        <td class="text-muted">${l.id}</td>
+        <td>${roomNum}</td>
+        <td>${tenantName}</td>
+        <td class="text-muted small">${fmtDate(l.start_date)}</td>
+        <td class="text-muted small">${fmtDate(l.end_date)}</td>
+        <td>${l.amount ? fmt(l.amount) : '<span class="text-muted">—</span>'}</td>
+        <td class="text-muted small">${l.bank_ref || '—'}</td>
+        <td class="text-muted small">${fmtDate(l.pay_date)}</td>
+        <td><span class="status-badge ${statusClass}">${l.status}</span></td>
+        <td class="wrap text-muted small">${l.notes || '—'}</td>
+        <td>${actionBtns(`openLedgerModal(${l.id})`, `deleteLedgerRow(${l.id})`)}</td>
+      </tr>`);
+    });
+  });
+}
+
+function openLedgerModal(id) {
+  if (id) {
+    const l = ledgerRows.find(x => x.id === id);
+    if (!l) return;
+    $('#ledgerModalTitle').text('Edit Ledger Entry');
+    $('#editLedgerId').val(l.id);
+    $('#editLedgerTenant').val(l.tenant_id);
+    $('#editLedgerStart').val(l.start_date);
+    $('#editLedgerEnd').val(l.end_date);
+    $('#editLedgerAmount').val(l.amount || '');
+    $('#editLedgerPayDate').val(l.pay_date || '');
+    $('#editLedgerStatus').val(l.status);
+    $('#editLedgerRef').val(l.bank_ref || '');
+    $('#editLedgerNotes').val(l.notes || '');
+  } else {
+    $('#ledgerModalTitle').text('Add Ledger Entry');
+    $('#editLedgerId').val('');
+    $('#editLedgerStart').val(isoToday());
+    $('#editLedgerEnd').val('');
+    $('#editLedgerAmount').val('');
+    $('#editLedgerPayDate').val(isoToday());
+    $('#editLedgerStatus').val('Pending');
+    $('#editLedgerRef').val('');
+    $('#editLedgerNotes').val('');
+  }
+  mLedger.show();
+}
+
+function saveLedger() {
+  const id = $('#editLedgerId').val();
+  const data = {
+    tenant_id:  $('#editLedgerTenant').val(),
+    start_date: $('#editLedgerStart').val(),
+    end_date:   $('#editLedgerEnd').val(),
+    amount:     $('#editLedgerAmount').val() || null,
+    pay_date:   $('#editLedgerPayDate').val() || null,
+    status:     $('#editLedgerStatus').val(),
+    bank_ref:   $('#editLedgerRef').val(),
+    notes:      $('#editLedgerNotes').val(),
+  };
+  if (!data.start_date || !data.end_date) { showToast('Start and end dates are required', 'error'); return; }
+  const method = id ? 'PUT' : 'POST';
+  const url    = id ? `/api/ledger/${id}` : '/api/ledger';
+  $.ajax({ url, method, contentType: 'application/json', data: JSON.stringify(data),
+    success: function(res) {
+      if (res.success) { mLedger.hide(); showToast(id ? 'Entry updated' : 'Entry added', 'success'); loadLedger(); }
+      else showToast(res.error || 'Error', 'error');
+    }
+  });
+}
+
+function deleteLedgerRow(id) {
+  confirmDelete('ledger entry', function() {
+    $.ajax({ url: `/api/ledger/${id}`, method: 'DELETE',
+      success: function(res) {
+        if (res.success) { showToast('Entry deleted', 'success'); loadLedger(); }
+      }
+    });
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+// BOND PAYMENTS
+// ════════════════════════════════════════════════════════════════
+function loadBondPayments() {
+  $.getJSON('/api/bond', function(res) {
+    if (!res.success) return;
+    bondRows = res.data;
+    $('#bondCount').text(`(${res.data.length} rows)`);
+    const tbody = $('#bondTable tbody').empty();
+    if (!res.data.length) { tbody.html('<tr><td colspan="11" class="text-center text-muted py-3">No bond records</td></tr>'); return; }
+    res.data.forEach(function(b) {
+      tbody.append(`<tr>
+        <td class="text-muted">${b.id}</td>
+        <td><span class="room-badge">Room ${b.room_number}</span></td>
+        <td>${b.tenant_name}</td>
+        <td class="text-muted small">${fmtDate(b.date)}</td>
+        <td class="fw-semibold">${fmt(b.amount)}</td>
+        <td class="text-muted small">${b.bank_ref || '—'}</td>
+        <td class="text-muted small">${b.refund_date ? fmtDate(b.refund_date) : '—'}</td>
+        <td>${b.refund_amount ? fmt(b.refund_amount) : '—'}</td>
+        <td class="text-muted small">${b.refund_bank_ref || '—'}</td>
+        <td class="wrap text-muted small">${b.notes || '—'}</td>
+        <td>${actionBtns(`openBondModal(${b.id})`, `deleteBondRow(${b.id})`)}</td>
+      </tr>`);
+    });
+  });
+}
+
+function openBondModal(id) {
+  if (id) {
+    const b = bondRows.find(x => x.id === id);
+    if (!b) return;
+    $('#bondModalTitle').text('Edit Bond Record');
+    $('#editBondId').val(b.id);
+    $('#editBondTenantRow').hide();
+    $('#editBondDate').val(b.date);
+    $('#editBondAmount').val(b.amount);
+    $('#editBondRef').val(b.bank_ref || '');
+    $('#editBondRefundDate').val(b.refund_date || '');
+    $('#editBondRefundAmount').val(b.refund_amount || '');
+    $('#editBondRefundRef').val(b.refund_bank_ref || '');
+    $('#editBondNotes').val(b.notes || '');
+  } else {
+    $('#bondModalTitle').text('Add Bond Record');
+    $('#editBondId').val('');
+    $('#editBondTenantRow').show();
+    $('#editBondDate').val(isoToday());
+    $('#editBondAmount').val('');
+    $('#editBondRef').val('');
+    $('#editBondRefundDate').val('');
+    $('#editBondRefundAmount').val('');
+    $('#editBondRefundRef').val('');
+    $('#editBondNotes').val('');
+  }
+  mBond.show();
+}
+
+function saveBond() {
+  const id = $('#editBondId').val();
+  const data = {
+    date:             $('#editBondDate').val(),
+    amount:           $('#editBondAmount').val(),
+    bank_ref:         $('#editBondRef').val(),
+    refund_date:      $('#editBondRefundDate').val() || null,
+    refund_amount:    $('#editBondRefundAmount').val() || null,
+    refund_bank_ref:  $('#editBondRefundRef').val(),
+    notes:            $('#editBondNotes').val(),
+  };
+  if (!data.date || !data.amount) { showToast('Date and amount are required', 'error'); return; }
+  if (id) {
+    $.ajax({ url: `/api/bond/${id}`, method: 'PUT', contentType: 'application/json', data: JSON.stringify(data),
+      success: function(res) {
+        if (res.success) { mBond.hide(); showToast('Bond record updated', 'success'); loadBondPayments(); }
+        else showToast(res.error || 'Error', 'error');
+      }
+    });
+  } else {
+    data.tenant_id = $('#editBondTenant').val();
+    if (!data.tenant_id) { showToast('Please select a tenant', 'error'); return; }
+    $.ajax({ url: '/api/bond', method: 'POST', contentType: 'application/json', data: JSON.stringify(data),
+      success: function(res) {
+        if (res.success) { mBond.hide(); showToast('Bond record added', 'success'); loadBondPayments(); }
+        else showToast(res.error || 'Error', 'error');
+      }
+    });
+  }
+}
+
+function deleteBondRow(id) {
+  confirmDelete('bond payment', function() {
+    $.ajax({ url: `/api/bond/${id}`, method: 'DELETE',
+      success: function(res) {
+        if (res.success) { showToast('Deleted', 'success'); loadBondPayments(); }
+      }
+    });
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+// EXPENSES
+// ════════════════════════════════════════════════════════════════
+function loadExpenses() {
+  $.getJSON('/api/expenses', function(res) {
+    if (!res.success) return;
+    expenseRows = res.data;
+    $('#expenseCount').text(`(${res.data.length} rows)`);
+    const tbody = $('#expensesTable tbody').empty();
+    if (!res.data.length) { tbody.html('<tr><td colspan="7" class="text-center text-muted py-3">No expenses</td></tr>'); return; }
+    res.data.forEach(function(e) {
+      tbody.append(`<tr>
+        <td class="text-muted">${e.id}</td>
+        <td class="text-muted small">${fmtDate(e.date)}</td>
+        <td>${e.description}</td>
+        <td><span class="category-tag">${e.category}</span></td>
+        <td class="fw-semibold">${fmt(e.amount)}</td>
+        <td class="wrap text-muted small">${e.notes || '—'}</td>
+        <td>${actionBtns(`openExpenseModal(${e.id})`, `deleteExpenseRow(${e.id})`)}</td>
+      </tr>`);
+    });
+  });
+}
+
+function openExpenseModal(id) {
+  if (id) {
+    const e = expenseRows.find(x => x.id === id);
+    if (!e) return;
+    $('#expenseModalTitle').text('Edit Expense');
+    $('#editExpenseId').val(e.id);
+    $('#editExpDate').val(e.date);
+    $('#editExpCategory').val(e.category);
+    $('#editExpDesc').val(e.description);
+    $('#editExpAmount').val(e.amount);
+    $('#editExpNotes').val(e.notes || '');
+  } else {
+    $('#expenseModalTitle').text('Add Expense');
+    $('#editExpenseId').val('');
+    $('#editExpDate').val(isoToday());
+    $('#editExpCategory').val('Utilities');
+    $('#editExpDesc').val('');
+    $('#editExpAmount').val('');
+    $('#editExpNotes').val('');
+  }
+  mExpense.show();
+}
+
+function saveExpense() {
+  const id = $('#editExpenseId').val();
+  const data = {
+    date:        $('#editExpDate').val(),
+    description: $('#editExpDesc').val().trim(),
+    category:    $('#editExpCategory').val(),
+    amount:      $('#editExpAmount').val(),
+    notes:       $('#editExpNotes').val(),
+  };
+  if (!data.date || !data.description || !data.amount) { showToast('Date, description and amount are required', 'error'); return; }
+  const method = id ? 'PUT' : 'POST';
+  const url    = id ? `/api/expenses/${id}` : '/api/expenses';
+  $.ajax({ url, method, contentType: 'application/json', data: JSON.stringify(data),
+    success: function(res) {
+      if (res.success) { mExpense.hide(); showToast(id ? 'Expense updated' : 'Expense added', 'success'); loadExpenses(); }
+      else showToast(res.error || 'Error', 'error');
+    }
+  });
+}
+
+function deleteExpenseRow(id) {
+  confirmDelete('expense', function() {
+    $.ajax({ url: `/api/expenses/${id}`, method: 'DELETE',
+      success: function(res) {
+        if (res.success) { showToast('Expense deleted', 'success'); loadExpenses(); }
+      }
+    });
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+// BACKUP — Import
+// ════════════════════════════════════════════════════════════════
+$('#importFileInput').on('change', function() {
+  $('#importBtn').prop('disabled', !this.files.length);
+});
+
+$('#importBtn').on('click', function() {
+  const file = $('#importFileInput')[0].files[0];
+  if (!file) return;
+  if (!confirm('Replace ALL current data with this file? This cannot be undone.')) return;
+
+  const btn = $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Importing…');
+  fetch('/api/db/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: file,
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(res) {
+    if (res.success) {
+      showToast('Database imported — reloading data…', 'success');
+      $('#importFileInput').val('');
+      btn.prop('disabled', true).html('<i class="bi bi-upload me-2"></i>Import &amp; Replace Database');
+      loadRooms(); loadTenants(); loadLedger(); loadBondPayments(); loadExpenses(); loadTenantDropdowns();
+    } else {
+      showToast(res.error || 'Import failed', 'error');
+      btn.prop('disabled', false).html('<i class="bi bi-upload me-2"></i>Import &amp; Replace Database');
+    }
+  })
+  .catch(function() {
+    showToast('Import failed — check the file and try again', 'error');
+    btn.prop('disabled', false).html('<i class="bi bi-upload me-2"></i>Import &amp; Replace Database');
+  });
+});
+</script>
+</body>
+</html>

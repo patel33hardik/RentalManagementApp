@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Expenses — Rental Manager</title>
+  <link rel="stylesheet" href="/common/thirdparty/bootstrap/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/common/thirdparty/bootstrap/css/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+
+<%- include('_sidebar', { activePage: 'expenses' }) %>
+
+<div class="main-wrapper" id="mainWrapper">
+  <%- include('_topbar', { title: 'Expenses' }) %>
+
+  <main class="page-content">
+
+    <div class="row g-4">
+
+      <!-- Expenses Table -->
+      <div class="col-lg-8">
+        <div class="panel">
+          <div class="panel__header">
+            <h2 class="panel__title"><i class="bi bi-receipt me-2"></i>All Expenses</h2>
+            <div class="fw-bold" id="expensesTotal"></div>
+          </div>
+
+          <!-- Category Filter Bar -->
+          <div class="px-3 pt-3 pb-2 border-bottom" id="categoryFilterBar">
+            <div class="d-flex flex-wrap gap-2">
+              <button class="btn btn-sm btn-primary category-filter-btn" data-cat="All">All</button>
+            </div>
+          </div>
+
+          <div class="panel__body p-0">
+            <table class="table table-hover mb-0" id="expensesTable">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Description</th>
+                  <th>Category</th>
+                  <th>Amount</th>
+                  <th class="text-end">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="5" class="text-center py-3 text-muted">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="panel__footer d-flex justify-content-between align-items-center">
+            <div class="text-muted small" id="filterLabel">All categories</div>
+            <div class="fw-bold" id="filteredTotal"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Add Expense Form -->
+      <div class="col-lg-4">
+        <div class="panel">
+          <div class="panel__header">
+            <h2 class="panel__title"><i class="bi bi-plus-circle me-2"></i>Add Expense</h2>
+          </div>
+          <div class="panel__body">
+            <form id="expenseForm">
+              <input type="hidden" id="expenseId">
+              <div class="mb-3">
+                <label class="form-label">Date</label>
+                <input type="date" class="form-control" id="expDate" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Description</label>
+                <input type="text" class="form-control" id="expDesc" placeholder="e.g. Electricity bill" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Category</label>
+                <select class="form-select" id="expCategory">
+                  <option value="Utilities">Utilities</option>
+                  <option value="Maintenance">Maintenance</option>
+                  <option value="Cleaning">Cleaning</option>
+                  <option value="Furniture & Appliances">Furniture &amp; Appliances</option>
+                  <option value="Insurance">Insurance</option>
+                  <option value="Council Rates">Council Rates</option>
+                  <option value="General">General</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Amount ($)</label>
+                <div class="input-group">
+                  <span class="input-group-text">$</span>
+                  <input type="number" class="form-control" id="expAmount" step="0.01" min="0" required>
+                </div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Notes</label>
+                <input type="text" class="form-control" id="expNotes" placeholder="Optional">
+              </div>
+              <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1" id="expSubmitBtn">
+                  <i class="bi bi-save me-1"></i>Save Expense
+                </button>
+                <button type="button" class="btn btn-outline-secondary d-none" id="expCancelBtn">Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Category Breakdown -->
+        <div class="panel mt-4">
+          <div class="panel__header">
+            <h2 class="panel__title"><i class="bi bi-pie-chart me-2"></i>By Category</h2>
+          </div>
+          <div class="panel__body p-0">
+            <table class="table mb-0" id="categoryBreakdownTable">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th class="text-end">Total</th>
+                  <th class="text-end">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="3" class="text-center text-muted py-3">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+</div>
+
+<%- include('_scripts') %>
+<script>
+let allExpenses = [];
+let activeCategory = 'All';
+
+function isoToday() {
+  const t = new Date();
+  return t.getFullYear() + '-' + String(t.getMonth()+1).padStart(2,'0') + '-' + String(t.getDate()).padStart(2,'0');
+}
+
+$(function() {
+  $('#expDate').val(isoToday());
+  loadExpenses();
+
+  $('#expenseForm').on('submit', function(e) {
+    e.preventDefault();
+    const id = $('#expenseId').val();
+    const data = {
+      date:        $('#expDate').val(),
+      description: $('#expDesc').val(),
+      category:    $('#expCategory').val(),
+      amount:      $('#expAmount').val(),
+      notes:       $('#expNotes').val(),
+    };
+    const method = id ? 'PUT' : 'POST';
+    const url    = id ? `/api/expenses/${id}` : '/api/expenses';
+    $.ajax({
+      url, method,
+      contentType: 'application/json',
+      data: JSON.stringify(data),
+      success: function(res) {
+        if (res.success) {
+          showToast(id ? 'Expense updated' : 'Expense added', 'success');
+          resetForm();
+          loadExpenses();
+        }
+      }
+    });
+  });
+
+  $('#expCancelBtn').on('click', resetForm);
+  $(document).on('click', '.category-filter-btn', function() {
+    activeCategory = $(this).data('cat');
+    $('.category-filter-btn').removeClass('btn-primary').addClass('btn-outline-secondary');
+    $(this).removeClass('btn-outline-secondary').addClass('btn-primary');
+    renderTable();
+  });
+});
+
+function loadExpenses() {
+  $.getJSON('/api/expenses', function(res) {
+    if (!res.success) return;
+    allExpenses = res.data;
+    buildFilterButtons();
+    renderTable();
+    renderBreakdown();
+  });
+}
+
+function buildFilterButtons() {
+  const cats = ['All', ...new Set(allExpenses.map(function(e) { return e.category; }))].filter(Boolean);
+  const bar = $('#categoryFilterBar .d-flex').empty();
+  cats.forEach(function(cat) {
+    const active = cat === activeCategory;
+    bar.append(
+      `<button class="btn btn-sm ${active ? 'btn-primary' : 'btn-outline-secondary'} category-filter-btn" data-cat="${cat}">${cat}</button>`
+    );
+  });
+}
+
+function renderTable() {
+  const filtered = activeCategory === 'All'
+    ? allExpenses
+    : allExpenses.filter(function(e) { return e.category === activeCategory; });
+
+  const tbody = $('#expensesTable tbody').empty();
+  if (!filtered.length) {
+    tbody.html('<tr><td colspan="5" class="text-center text-muted py-3">No expenses</td></tr>');
+    $('#filteredTotal').text('');
+    $('#filterLabel').text('No results');
+    return;
+  }
+
+  let total = 0;
+  filtered.forEach(function(e) {
+    total += e.amount;
+    tbody.append(`
+      <tr>
+        <td>${fmtDate(e.date)}</td>
+        <td>${e.description}</td>
+        <td><span class="category-tag">${e.category}</span></td>
+        <td class="fw-semibold">${fmt(e.amount)}</td>
+        <td class="text-end">
+          <button class="btn btn-xs btn-outline-primary me-1" onclick="editExpense(${e.id})">
+            <i class="bi bi-pencil"></i>
+          </button>
+          <button class="btn btn-xs btn-outline-danger" onclick="deleteExpense(${e.id})">
+            <i class="bi bi-trash"></i>
+          </button>
+        </td>
+      </tr>
+    `);
+  });
+
+  const label = activeCategory === 'All'
+    ? `${filtered.length} expenses`
+    : `${filtered.length} expense${filtered.length !== 1 ? 's' : ''} in ${activeCategory}`;
+  $('#filterLabel').text(label);
+  $('#filteredTotal').html(`Total: <span class="text-danger">${fmt(total)}</span>`);
+}
+
+function renderBreakdown() {
+  const totals = {};
+  let grand = 0;
+  allExpenses.forEach(function(e) {
+    totals[e.category] = (totals[e.category] || 0) + e.amount;
+    grand += e.amount;
+  });
+
+  const sorted = Object.entries(totals).sort(function(a, b) { return b[1] - a[1]; });
+  const tbody = $('#categoryBreakdownTable tbody').empty();
+
+  sorted.forEach(function([cat, amt]) {
+    const pct = grand > 0 ? ((amt / grand) * 100).toFixed(1) : '0.0';
+    tbody.append(`
+      <tr>
+        <td><span class="category-tag">${cat}</span></td>
+        <td class="text-end fw-semibold">${fmt(amt)}</td>
+        <td class="text-end text-muted small">${pct}%</td>
+      </tr>
+    `);
+  });
+
+  tbody.append(`
+    <tr class="table-light fw-bold">
+      <td>Total</td>
+      <td class="text-end text-danger">${fmt(grand)}</td>
+      <td class="text-end text-muted small">100%</td>
+    </tr>
+  `);
+
+  $('#expensesTotal').html(`Total: <span class="text-danger">${fmt(grand)}</span>`);
+}
+
+function editExpense(id) {
+  const e = allExpenses.find(function(x) { return x.id === id; });
+  if (!e) return;
+  $('#expenseId').val(e.id);
+  $('#expDate').val(e.date);
+  $('#expDesc').val(e.description);
+  $('#expCategory').val(e.category);
+  $('#expAmount').val(e.amount);
+  $('#expNotes').val(e.notes || '');
+  $('#expSubmitBtn').html('<i class="bi bi-save me-1"></i>Update Expense');
+  $('#expCancelBtn').removeClass('d-none');
+  window.scrollTo(0, 0);
+}
+
+function deleteExpense(id) {
+  if (!confirm('Delete this expense?')) return;
+  $.ajax({
+    url: `/api/expenses/${id}`,
+    method: 'DELETE',
+    success: function(res) {
+      if (res.success) { showToast('Expense deleted', 'success'); loadExpenses(); }
+    }
+  });
+}
+
+function resetForm() {
+  $('#expenseId').val('');
+  $('#expenseForm')[0].reset();
+  $('#expDate').val(isoToday());
+  $('#expSubmitBtn').html('<i class="bi bi-save me-1"></i>Save Expense');
+  $('#expCancelBtn').addClass('d-none');
+}
+</script>
+</body>
+</html>
