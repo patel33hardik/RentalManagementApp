@@ -27,8 +27,9 @@ function createWindow() {
   // Load the app from Express
   mainWindow.loadURL(`http://localhost:${PORT}`);
 
-  // Show window when ready to avoid white flash
+  // Show maximized to avoid white flash
   mainWindow.once('ready-to-show', () => {
+    mainWindow.maximize();
     mainWindow.show();
   });
 
