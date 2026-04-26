@@ -1,6 +1,20 @@
 const express = require('express');
 const path    = require('path');
+const fs      = require('fs');
 const { all, get, run, getDb, reinitializeDb } = require('./common');
+
+const SETTINGS_PATH = path.join(__dirname, '..', 'db', 'settings.json');
+
+function readSettings() {
+  try {
+    if (fs.existsSync(SETTINGS_PATH)) return JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
+  } catch (e) {}
+  return {};
+}
+
+function writeSettings(obj) {
+  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(obj, null, 2));
+}
 
 const app = express();
 
@@ -462,6 +476,23 @@ app.get('/api/dashboard', (req, res) => {
   }
 });
 
+// ─── API: Settings ────────────────────────────────────────────────────────────
+
+app.get('/api/settings', (req, res) => {
+  res.json({ success: true, data: readSettings() });
+});
+
+app.post('/api/settings', (req, res) => {
+  try {
+    const settings = readSettings();
+    Object.assign(settings, req.body);
+    writeSettings(settings);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ─── API: Database Export / Import ────────────────────────────────────────────
 
 app.get('/api/db/export', (req, res) => {
@@ -472,6 +503,31 @@ app.get('/api/db/export', (req, res) => {
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="rental_manager_${stamp}.db"`);
     res.send(buffer);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/db/export-to-path', (req, res) => {
+  try {
+    const settings = readSettings();
+    const backupDir = settings.backup_path;
+    if (!backupDir) return res.status(400).json({ success: false, error: 'No backup folder configured' });
+    if (!fs.existsSync(backupDir)) return res.status(400).json({ success: false, error: `Folder not found: ${backupDir}` });
+
+    const stamp    = new Date().toISOString().slice(0, 10);
+    const filename = `rental_manager_${stamp}.db`;
+    const filePath = path.join(backupDir, filename);
+
+    const data   = getDb().export();
+    const buffer = Buffer.from(data);
+    fs.writeFileSync(filePath, buffer);
+
+    settings.last_backup      = new Date().toISOString();
+    settings.last_backup_file = filename;
+    writeSettings(settings);
+
+    res.json({ success: true, message: `Saved to ${filePath}`, file: filename });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
