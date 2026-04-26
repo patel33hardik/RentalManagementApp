@@ -27,6 +27,7 @@
       "output": "dist"
     },
     "compression": "normal",
+    "asar": false,
     "win": {
       "target": "nsis",
       "icon": "common/images/icon.png"
