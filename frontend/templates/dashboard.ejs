@@ -106,10 +106,11 @@
                 <th>Bond</th>
                 <th>Bond Refund Date</th>
                 <th>Total Received</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              <tr><td colspan="8" class="text-center py-3 text-muted">Loading…</td></tr>
+              <tr><td colspan="9" class="text-center py-3 text-muted">Loading…</td></tr>
             </tbody>
           </table>
         </div>
@@ -173,7 +174,7 @@ function loadMovedOut() {
     const tbody = $('#movedOutTable tbody');
     tbody.empty();
     if (!res.success || res.data.length === 0) {
-      tbody.html('<tr><td colspan="8" class="text-center text-muted py-3">No previous tenants</td></tr>');
+      tbody.html('<tr><td colspan="9" class="text-center text-muted py-3">No previous tenants</td></tr>');
       return;
     }
     const sorted = res.data.slice().sort(function(a, b) {
@@ -193,6 +194,11 @@ function loadMovedOut() {
           <td>${fmt(t.bond)}</td>
           <td>${refundLabel}</td>
           <td class="text-success fw-semibold">${fmt(t.total_received)}</td>
+          <td class="text-end">
+            <a href="/tenant/${t.id}" class="btn btn-xs btn-outline-primary">
+              <i class="bi bi-journal-text me-1"></i>Ledger
+            </a>
+          </td>
         </tr>
       `);
     });
