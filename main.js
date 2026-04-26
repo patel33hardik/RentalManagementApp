@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { initializeDatabase } = require('./backend/common');
 
@@ -16,6 +16,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
     },
     icon: path.join(__dirname, 'common/images/icon.png'),
     title: 'Rental Manager',
@@ -61,4 +62,12 @@ app.on('window-all-closed', () => {
 
 app.on('activate', () => {
   if (mainWindow === null) createWindow();
+});
+
+ipcMain.handle('dialog:pick-folder', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select Backup Folder',
+    properties: ['openDirectory'],
+  });
+  return result.canceled ? null : result.filePaths[0];
 });

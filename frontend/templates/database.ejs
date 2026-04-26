@@ -202,13 +202,28 @@
           <div class="col-md-6">
             <div class="panel">
               <div class="panel__header">
-                <h2 class="panel__title"><i class="bi bi-download me-2"></i>Export Database</h2>
+                <h2 class="panel__title"><i class="bi bi-folder-check me-2"></i>Backup Location</h2>
               </div>
               <div class="panel__body">
-                <p class="text-muted small mb-3">Download the current database as a <code>.db</code> file. Use this to create a backup before making large changes.</p>
-                <a href="/api/db/export" class="btn btn-primary">
-                  <i class="bi bi-download me-2"></i>Download Database
-                </a>
+                <p class="text-muted small mb-3">Set a folder where backups will be saved. Each export creates a file named <code>rental_manager_YYYY-MM-DD.db</code>.</p>
+                <div class="mb-3">
+                  <label class="form-label">Backup Folder</label>
+                  <div class="input-group">
+                    <input type="text" class="form-control font-monospace" id="backupPath" placeholder="No folder selected">
+                    <button class="btn btn-outline-secondary" id="browseBtn" type="button">
+                      <i class="bi bi-folder me-1"></i>Browse
+                    </button>
+                  </div>
+                  <div class="form-text" id="lastBackupInfo"></div>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                  <button class="btn btn-primary" id="exportToPathBtn" disabled>
+                    <i class="bi bi-cloud-arrow-down me-2"></i>Export to Folder
+                  </button>
+                  <a href="/api/db/export" class="btn btn-outline-secondary">
+                    <i class="bi bi-download me-1"></i>Download .db
+                  </a>
+                </div>
               </div>
             </div>
           </div>
@@ -519,6 +534,7 @@ $(function() {
   loadBondPayments();
   loadExpenses();
   loadTenantDropdowns();
+  loadBackupSettings();
 
   $('#saveRoomBtn').on('click',    saveRoom);
   $('#saveTenantBtn').on('click',  saveTenant);
@@ -967,6 +983,58 @@ function deleteExpenseRow(id) {
     });
   });
 }
+
+// ════════════════════════════════════════════════════════════════
+// BACKUP — Location + Export
+// ════════════════════════════════════════════════════════════════
+function loadBackupSettings() {
+  $.getJSON('/api/settings', function(res) {
+    if (!res.success) return;
+    const s = res.data;
+    if (s.backup_path) {
+      $('#backupPath').val(s.backup_path);
+      $('#exportToPathBtn').prop('disabled', false);
+    }
+    if (s.last_backup && s.last_backup_file) {
+      const d = new Date(s.last_backup);
+      const label = d.toLocaleString('en-AU', { dateStyle: 'medium', timeStyle: 'short' });
+      $('#lastBackupInfo').html(`Last export: <strong>${s.last_backup_file}</strong> at ${label}`);
+    }
+  });
+}
+
+$('#browseBtn').on('click', async function() {
+  if (!window.electronAPI) { showToast('Folder picker only works inside the Electron app', 'error'); return; }
+  const folder = await window.electronAPI.pickFolder();
+  if (!folder) return;
+  $('#backupPath').val(folder);
+  $('#exportToPathBtn').prop('disabled', false);
+  $.ajax({
+    url: '/api/settings', method: 'POST', contentType: 'application/json',
+    data: JSON.stringify({ backup_path: folder }),
+  });
+});
+
+$('#exportToPathBtn').on('click', function() {
+  const btn = $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Exporting…');
+  $.ajax({
+    url: '/api/db/export-to-path', method: 'POST',
+    success: function(res) {
+      btn.prop('disabled', false).html('<i class="bi bi-cloud-arrow-down me-2"></i>Export to Folder');
+      if (res.success) {
+        showToast(`Saved: ${res.file}`, 'success');
+        loadBackupSettings();
+      } else {
+        showToast(res.error || 'Export failed', 'error');
+      }
+    },
+    error: function(xhr) {
+      btn.prop('disabled', false).html('<i class="bi bi-cloud-arrow-down me-2"></i>Export to Folder');
+      const msg = xhr.responseJSON ? xhr.responseJSON.error : 'Export failed';
+      showToast(msg, 'error');
+    }
+  });
+});
 
 // ════════════════════════════════════════════════════════════════
 // BACKUP — Import
