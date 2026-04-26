@@ -1,6 +1,6 @@
 {
   "name": "rental-manager",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Backpacker Room Rental Manager",
   "main": "main.js",
   "scripts": {
@@ -28,7 +28,7 @@
     },
     "win": {
       "target": "nsis",
-      "icon": "common/images/icon.ico"
+      "icon": "common/images/icon.png"
     },
     "files": [
       "**/*",
