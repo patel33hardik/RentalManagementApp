@@ -26,6 +26,7 @@
     "directories": {
       "output": "dist"
     },
+    "compression": "normal",
     "win": {
       "target": "nsis",
       "icon": "common/images/icon.png"
