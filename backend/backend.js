@@ -3,7 +3,10 @@ const path    = require('path');
 const fs      = require('fs');
 const { all, get, run, getDb, reinitializeDb } = require('./common');
 
-const SETTINGS_PATH = path.join(__dirname, '..', 'db', 'settings.json');
+const isPackaged = __dirname.includes('app.asar');
+const SETTINGS_PATH = isPackaged
+  ? path.join(process.resourcesPath, 'db', 'settings.json')
+  : path.join(__dirname, '..', 'db', 'settings.json');
 
 function readSettings() {
   try {

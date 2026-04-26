@@ -2,8 +2,11 @@ const initSqlJs = require('sql.js');
 const path = require('path');
 const fs = require('fs');
 
-// Resolve DB path — works both in dev and packaged Electron
-const dbDir = path.join(__dirname, '..', 'db');
+// Resolve DB path — inside asar is read-only, so use resourcesPath when packaged
+const isPackaged = __dirname.includes('app.asar');
+const dbDir = isPackaged
+  ? path.join(process.resourcesPath, 'db')
+  : path.join(__dirname, '..', 'db');
 if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
 
 const DB_PATH = path.join(dbDir, 'rental_manager.db');
