@@ -476,6 +476,136 @@ app.get('/api/dashboard', (req, res) => {
   }
 });
 
+// ─── API: Reports ─────────────────────────────────────────────────────────────
+
+// Income Summary — monthly breakdown of ledger entries
+app.get('/api/reports/income-summary', (req, res) => {
+  try {
+    const { from, to } = req.query;
+    const params = [];
+    let where = 'WHERE 1=1';
+    if (from) { where += ' AND start_date >= ?'; params.push(from); }
+    if (to)   { where += ' AND start_date <= ?'; params.push(to); }
+
+    const rows = all(`
+      SELECT
+        strftime('%Y-%m', start_date) as month,
+        COALESCE(SUM(CASE WHEN status = '✓ Paid'  THEN COALESCE(amount,0) ELSE 0 END), 0) as paid_amount,
+        COALESCE(SUM(CASE WHEN status = 'Pending'  THEN COALESCE(amount,0) ELSE 0 END), 0) as pending_amount,
+        COALESCE(SUM(CASE WHEN status = 'Waived'   THEN COALESCE(amount,0) ELSE 0 END), 0) as waived_amount,
+        COUNT(CASE WHEN status = '✓ Paid'  THEN 1 END) as paid_count,
+        COUNT(CASE WHEN status = 'Pending'  THEN 1 END) as pending_count,
+        COUNT(CASE WHEN status = 'Waived'   THEN 1 END) as waived_count,
+        COUNT(*) as total_count
+      FROM ledger ${where}
+      GROUP BY month
+      ORDER BY month DESC
+    `, params);
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Rent Collection — per-tenant payment breakdown
+app.get('/api/reports/rent-collection', (req, res) => {
+  try {
+    const { from, to, status } = req.query;
+    const params = [];
+    let lWhere = '';
+    if (from) { lWhere += ' AND l.start_date >= ?'; params.push(from); }
+    if (to)   { lWhere += ' AND l.start_date <= ?'; params.push(to); }
+    if (status && status !== 'All') { params.push(status); }
+
+    const rows = all(`
+      SELECT
+        t.id, t.name, r.room_number, t.weekly_rent, t.move_in, t.move_out, t.status,
+        COUNT(l.id) as total_weeks,
+        COALESCE(SUM(CASE WHEN l.status = '✓ Paid'  THEN 1 ELSE 0 END), 0) as paid_weeks,
+        COALESCE(SUM(CASE WHEN l.status = 'Pending'  THEN 1 ELSE 0 END), 0) as pending_weeks,
+        COALESCE(SUM(CASE WHEN l.status = 'Waived'   THEN 1 ELSE 0 END), 0) as waived_weeks,
+        COALESCE(SUM(CASE WHEN l.status = '✓ Paid'  THEN l.amount ELSE 0 END), 0) as total_paid,
+        COALESCE(SUM(CASE WHEN l.status = 'Pending'  THEN l.amount ELSE 0 END), 0) as total_pending
+      FROM tenants t
+      JOIN rooms r ON r.id = t.room_id
+      LEFT JOIN ledger l ON l.tenant_id = t.id ${lWhere}
+      WHERE 1=1 ${(status && status !== 'All') ? 'AND t.status = ?' : ''}
+      GROUP BY t.id
+      ORDER BY t.status, r.room_number
+    `, params);
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Profit & Loss — monthly income vs expenses
+app.get('/api/reports/profit-loss', (req, res) => {
+  try {
+    const { from, to } = req.query;
+    const lParams = [];
+    let lWhere = 'WHERE 1=1';
+    if (from) { lWhere += ' AND start_date >= ?'; lParams.push(from); }
+    if (to)   { lWhere += ' AND start_date <= ?'; lParams.push(to); }
+
+    const eParams = [];
+    let eWhere = 'WHERE 1=1';
+    if (from) { eWhere += ' AND date >= ?'; eParams.push(from); }
+    if (to)   { eWhere += ' AND date <= ?'; eParams.push(to); }
+
+    const incomeRows = all(`
+      SELECT strftime('%Y-%m', start_date) as month,
+        COALESCE(SUM(CASE WHEN status = '✓ Paid' THEN amount ELSE 0 END), 0) as income
+      FROM ledger ${lWhere} GROUP BY month
+    `, lParams);
+
+    const expRows = all(`
+      SELECT strftime('%Y-%m', date) as month,
+        COALESCE(SUM(amount), 0) as expenses
+      FROM expenses ${eWhere} GROUP BY month
+    `, eParams);
+
+    const months = {};
+    incomeRows.forEach(r => {
+      if (!months[r.month]) months[r.month] = { month: r.month, income: 0, expenses: 0 };
+      months[r.month].income = r.income;
+    });
+    expRows.forEach(r => {
+      if (!months[r.month]) months[r.month] = { month: r.month, income: 0, expenses: 0 };
+      months[r.month].expenses = r.expenses;
+    });
+
+    const data = Object.values(months)
+      .map(r => ({ month: r.month, income: r.income, expenses: r.expenses, profit: r.income - r.expenses }))
+      .sort((a, b) => b.month.localeCompare(a.month));
+
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Occupancy — tenant history per room
+app.get('/api/reports/occupancy', (req, res) => {
+  try {
+    const rows = all(`
+      SELECT
+        r.id as room_id, r.room_number, r.description,
+        t.id as tenant_id, t.name, t.move_in, t.move_out, t.status,
+        t.weekly_rent, t.bond,
+        COALESCE(SUM(CASE WHEN l.status = '✓ Paid' THEN l.amount ELSE 0 END), 0) as total_paid
+      FROM rooms r
+      LEFT JOIN tenants t ON t.room_id = r.id
+      LEFT JOIN ledger l ON l.tenant_id = t.id
+      GROUP BY r.id, t.id
+      ORDER BY r.room_number, t.created_at DESC
+    `);
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ─── API: Settings ────────────────────────────────────────────────────────────
 
 app.get('/api/settings', (req, res) => {
