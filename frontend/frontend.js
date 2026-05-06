@@ -43,4 +43,8 @@ router.get('/database', (req, res) => {
   res.render('database', { title: 'Database', activePage: 'database' });
 });
 
+router.get('/reports', (req, res) => {
+  res.render('reports', { title: 'Reports', activePage: 'reports' });
+});
+
 module.exports = router;

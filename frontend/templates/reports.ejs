@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reports — Rental Manager</title>
+  <link rel="stylesheet" href="/common/thirdparty/bootstrap/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/common/thirdparty/bootstrap/css/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="/static/css/app.css">
+  <style>
+    @media print {
+      .sidebar, .topbar, .report-controls, .nav-tabs { display: none !important; }
+      .main-wrapper { margin-left: 0 !important; }
+      .tab-pane { display: block !important; opacity: 1 !important; }
+      .tab-pane:not(.active) { display: none !important; }
+      .panel { box-shadow: none; border: 1px solid #dee2e6; }
+      .print-title { display: block !important; }
+    }
+    .print-title { display: none; }
+    .stat-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+    .month-label {
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    tr.summary-row td {
+      background: var(--bs-light);
+      font-weight: 700;
+      border-top: 2px solid #dee2e6;
+    }
+    .profit-positive { color: #198754; font-weight: 600; }
+    .profit-negative { color: #dc3545; font-weight: 600; }
+    .occupancy-room-header {
+      background: #1e293b;
+      color: #fff;
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+    .tenant-inactive { opacity: 0.65; }
+    .vacant-row td { color: #adb5bd; font-style: italic; }
+  </style>
+</head>
+<body>
+
+<%- include('_sidebar', { activePage: 'reports' }) %>
+
+<div class="main-wrapper" id="mainWrapper">
+  <%- include('_topbar', { title: 'Reports' }) %>
+
+  <main class="page-content">
+
+    <!-- Filter bar -->
+    <div class="panel mb-4 report-controls">
+      <div class="panel__body py-3">
+        <div class="d-flex gap-3 align-items-end flex-wrap">
+          <div>
+            <label class="form-label mb-1 small fw-semibold">From</label>
+            <input type="date" class="form-control form-control-sm" id="filterFrom">
+          </div>
+          <div>
+            <label class="form-label mb-1 small fw-semibold">To</label>
+            <input type="date" class="form-control form-control-sm" id="filterTo">
+          </div>
+          <div class="d-flex gap-2 mt-1">
+            <button class="btn btn-sm btn-primary" id="applyFilter">
+              <i class="bi bi-funnel me-1"></i>Apply
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" id="clearFilter">Clear</button>
+          </div>
+          <div class="d-flex gap-2 ms-auto mt-1">
+            <button class="btn btn-sm btn-outline-secondary" id="printReport">
+              <i class="bi bi-printer me-1"></i>Print
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs mb-3" id="reportTabs">
+      <li class="nav-item">
+        <a class="nav-link active" data-bs-toggle="tab" href="#tab-income">
+          <i class="bi bi-cash-stack me-1"></i>Income Summary
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tab-collection">
+          <i class="bi bi-people me-1"></i>Rent Collection
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tab-pl">
+          <i class="bi bi-graph-up-arrow me-1"></i>Profit &amp; Loss
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tab-occupancy">
+          <i class="bi bi-door-open me-1"></i>Occupancy
+        </a>
+      </li>
+    </ul>
+
+    <div class="tab-content">
+
+      <!-- ── Income Summary ── -->
+      <div class="tab-pane fade show active" id="tab-income">
+        <div class="panel">
+          <div class="panel__header">
+            <h2 class="panel__title"><i class="bi bi-cash-stack me-2"></i>Income Summary</h2>
+            <div class="small text-muted" id="incomeSubtitle"></div>
+          </div>
+          <div class="panel__body p-0">
+            <div class="print-title p-3 fw-bold">Income Summary Report</div>
+            <table class="table table-hover mb-0" id="incomeTable">
+              <thead>
+                <tr>
+                  <th>Month</th>
+                  <th class="text-end">Paid Weeks</th>
+                  <th class="text-end">Paid Amount</th>
+                  <th class="text-end">Pending Weeks</th>
+                  <th class="text-end">Pending Amount</th>
+                  <th class="text-end">Waived</th>
+                  <th class="text-end">Total Entries</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="7" class="text-center py-3 text-muted">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Rent Collection ── -->
+      <div class="tab-pane fade" id="tab-collection">
+        <div class="panel">
+          <div class="panel__header d-flex align-items-center gap-3 flex-wrap">
+            <h2 class="panel__title mb-0"><i class="bi bi-people me-2"></i>Rent Collection</h2>
+            <div class="ms-auto d-flex gap-2 align-items-center report-controls">
+              <label class="small fw-semibold mb-0">Tenant status:</label>
+              <select class="form-select form-select-sm" id="collectionStatus" style="width:auto">
+                <option value="All">All</option>
+                <option value="Active" selected>Active</option>
+                <option value="Inactive">Moved Out</option>
+              </select>
+            </div>
+          </div>
+          <div class="panel__body p-0">
+            <div class="print-title p-3 fw-bold">Rent Collection Report</div>
+            <table class="table table-hover mb-0" id="collectionTable">
+              <thead>
+                <tr>
+                  <th>Room</th>
+                  <th>Tenant</th>
+                  <th>Status</th>
+                  <th class="text-end">Weekly Rent</th>
+                  <th>Move-In</th>
+                  <th>Move-Out</th>
+                  <th class="text-end">Paid Wks</th>
+                  <th class="text-end">Paid Amount</th>
+                  <th class="text-end">Pending Wks</th>
+                  <th class="text-end">Pending $</th>
+                  <th class="text-end">Waived Wks</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="11" class="text-center py-3 text-muted">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Profit & Loss ── -->
+      <div class="tab-pane fade" id="tab-pl">
+        <div class="panel">
+          <div class="panel__header">
+            <h2 class="panel__title"><i class="bi bi-graph-up-arrow me-2"></i>Profit &amp; Loss</h2>
+            <div class="small text-muted" id="plSubtitle"></div>
+          </div>
+          <div class="panel__body p-0">
+            <div class="print-title p-3 fw-bold">Profit &amp; Loss Report</div>
+            <table class="table table-hover mb-0" id="plTable">
+              <thead>
+                <tr>
+                  <th>Month</th>
+                  <th class="text-end">Rent Income</th>
+                  <th class="text-end">Expenses</th>
+                  <th class="text-end">Net Profit</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="4" class="text-center py-3 text-muted">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Occupancy ── -->
+      <div class="tab-pane fade" id="tab-occupancy">
+        <div class="panel">
+          <div class="panel__header">
+            <h2 class="panel__title"><i class="bi bi-door-open me-2"></i>Occupancy History</h2>
+            <div class="small text-muted">All-time tenant history per room</div>
+          </div>
+          <div class="panel__body p-0">
+            <div class="print-title p-3 fw-bold">Occupancy Report</div>
+            <table class="table mb-0" id="occupancyTable">
+              <thead>
+                <tr>
+                  <th>Room</th>
+                  <th>Tenant</th>
+                  <th>Status</th>
+                  <th>Move-In</th>
+                  <th>Move-Out</th>
+                  <th class="text-end">Weekly Rent</th>
+                  <th class="text-end">Bond</th>
+                  <th class="text-end">Total Paid</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="8" class="text-center py-3 text-muted">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /tab-content -->
+
+  </main>
+</div>
+
+<%- include('_scripts') %>
+<script>
+function fmtMonth(m) {
+  if (!m) return '—';
+  const [y, mo] = m.split('-');
+  const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return names[parseInt(mo,10)-1] + ' ' + y;
+}
+
+function filterParams() {
+  const p = {};
+  const f = $('#filterFrom').val();
+  const t = $('#filterTo').val();
+  if (f) p.from = f;
+  if (t) p.to = t;
+  return p;
+}
+
+function activeTab() {
+  return $('#reportTabs .nav-link.active').attr('href');
+}
+
+function loadActiveTab() {
+  const tab = activeTab();
+  if (tab === '#tab-income')     loadIncome();
+  if (tab === '#tab-collection') loadCollection();
+  if (tab === '#tab-pl')         loadPL();
+  if (tab === '#tab-occupancy')  loadOccupancy();
+}
+
+// ── Income Summary ────────────────────────────────────────────────────────────
+function loadIncome() {
+  $.getJSON('/api/reports/income-summary', filterParams(), function(res) {
+    if (!res.success) return;
+    const rows = res.data;
+    const tbody = $('#incomeTable tbody').empty();
+
+    if (!rows.length) {
+      tbody.html('<tr><td colspan="7" class="text-center text-muted py-3">No data</td></tr>');
+      $('#incomeSubtitle').text('');
+      return;
+    }
+
+    let totPaid = 0, totPending = 0, totWaived = 0, totPaidWks = 0, totPendingWks = 0, totWaivedWks = 0, totEntries = 0;
+    rows.forEach(function(r) {
+      totPaid      += r.paid_amount;
+      totPending   += r.pending_amount;
+      totWaived    += r.waived_amount;
+      totPaidWks   += r.paid_count;
+      totPendingWks+= r.pending_count;
+      totWaivedWks += r.waived_count;
+      totEntries   += r.total_count;
+      tbody.append(`
+        <tr>
+          <td class="month-label">${fmtMonth(r.month)}</td>
+          <td class="text-end">${r.paid_count}</td>
+          <td class="text-end fw-semibold text-success">${fmt(r.paid_amount)}</td>
+          <td class="text-end">${r.pending_count}</td>
+          <td class="text-end text-warning">${fmt(r.pending_amount)}</td>
+          <td class="text-end text-muted">${r.waived_count}</td>
+          <td class="text-end text-muted">${r.total_count}</td>
+        </tr>
+      `);
+    });
+
+    tbody.append(`
+      <tr class="summary-row">
+        <td>Total (${rows.length} months)</td>
+        <td class="text-end">${totPaidWks}</td>
+        <td class="text-end text-success">${fmt(totPaid)}</td>
+        <td class="text-end">${totPendingWks}</td>
+        <td class="text-end text-warning">${fmt(totPending)}</td>
+        <td class="text-end">${totWaivedWks}</td>
+        <td class="text-end">${totEntries}</td>
+      </tr>
+    `);
+
+    $('#incomeSubtitle').text(rows.length + ' months • ' + fmt(totPaid) + ' collected');
+  });
+}
+
+// ── Rent Collection ───────────────────────────────────────────────────────────
+function loadCollection() {
+  const params = filterParams();
+  params.status = $('#collectionStatus').val();
+  $.getJSON('/api/reports/rent-collection', params, function(res) {
+    if (!res.success) return;
+    const rows = res.data;
+    const tbody = $('#collectionTable tbody').empty();
+
+    if (!rows.length) {
+      tbody.html('<tr><td colspan="11" class="text-center text-muted py-3">No tenants found</td></tr>');
+      return;
+    }
+
+    let totPaid = 0, totPending = 0;
+    rows.forEach(function(t) {
+      totPaid    += t.total_paid;
+      totPending += t.total_pending;
+      const inactive = t.status === 'Inactive';
+      tbody.append(`
+        <tr class="${inactive ? 'tenant-inactive' : ''}">
+          <td class="fw-semibold">Room ${t.room_number}</td>
+          <td>${t.name}</td>
+          <td>
+            <span class="badge ${t.status === 'Active' ? 'bg-success' : 'bg-secondary'}">${t.status}</span>
+          </td>
+          <td class="text-end">${fmt(t.weekly_rent)}</td>
+          <td>${fmtDate(t.move_in)}</td>
+          <td>${t.move_out ? fmtDate(t.move_out) : '—'}</td>
+          <td class="text-end">${t.paid_weeks}</td>
+          <td class="text-end fw-semibold text-success">${fmt(t.total_paid)}</td>
+          <td class="text-end">${t.pending_weeks}</td>
+          <td class="text-end text-warning">${fmt(t.total_pending)}</td>
+          <td class="text-end text-muted">${t.waived_weeks}</td>
+        </tr>
+      `);
+    });
+
+    tbody.append(`
+      <tr class="summary-row">
+        <td colspan="7">Total (${rows.length} tenants)</td>
+        <td class="text-end text-success">${fmt(totPaid)}</td>
+        <td></td>
+        <td class="text-end text-warning">${fmt(totPending)}</td>
+        <td></td>
+      </tr>
+    `);
+  });
+}
+
+// ── Profit & Loss ─────────────────────────────────────────────────────────────
+function loadPL() {
+  $.getJSON('/api/reports/profit-loss', filterParams(), function(res) {
+    if (!res.success) return;
+    const rows = res.data;
+    const tbody = $('#plTable tbody').empty();
+
+    if (!rows.length) {
+      tbody.html('<tr><td colspan="4" class="text-center text-muted py-3">No data</td></tr>');
+      $('#plSubtitle').text('');
+      return;
+    }
+
+    let totIncome = 0, totExp = 0, totProfit = 0;
+    rows.forEach(function(r) {
+      totIncome  += r.income;
+      totExp     += r.expenses;
+      totProfit  += r.profit;
+      const cls   = r.profit >= 0 ? 'profit-positive' : 'profit-negative';
+      const icon  = r.profit >= 0 ? 'bi-arrow-up' : 'bi-arrow-down';
+      tbody.append(`
+        <tr>
+          <td class="month-label">${fmtMonth(r.month)}</td>
+          <td class="text-end text-success fw-semibold">${fmt(r.income)}</td>
+          <td class="text-end text-danger">${fmt(r.expenses)}</td>
+          <td class="text-end ${cls}"><i class="bi ${icon} me-1"></i>${fmt(Math.abs(r.profit))}</td>
+        </tr>
+      `);
+    });
+
+    const totCls  = totProfit >= 0 ? 'profit-positive' : 'profit-negative';
+    const totIcon = totProfit >= 0 ? 'bi-arrow-up' : 'bi-arrow-down';
+    tbody.append(`
+      <tr class="summary-row">
+        <td>Total (${rows.length} months)</td>
+        <td class="text-end text-success">${fmt(totIncome)}</td>
+        <td class="text-end text-danger">${fmt(totExp)}</td>
+        <td class="text-end ${totCls}"><i class="bi ${totIcon} me-1"></i>${fmt(Math.abs(totProfit))}</td>
+      </tr>
+    `);
+
+    $('#plSubtitle').text(rows.length + ' months • Net ' + (totProfit >= 0 ? '+' : '') + fmt(totProfit));
+  });
+}
+
+// ── Occupancy ─────────────────────────────────────────────────────────────────
+function loadOccupancy() {
+  $.getJSON('/api/reports/occupancy', function(res) {
+    if (!res.success) return;
+    const rows = res.data;
+    const tbody = $('#occupancyTable tbody').empty();
+
+    if (!rows.length) {
+      tbody.html('<tr><td colspan="8" class="text-center text-muted py-3">No rooms found</td></tr>');
+      return;
+    }
+
+    // Group by room
+    const rooms = {};
+    rows.forEach(function(r) {
+      if (!rooms[r.room_number]) rooms[r.room_number] = [];
+      rooms[r.room_number].push(r);
+    });
+
+    Object.keys(rooms).sort(function(a,b){ return parseInt(a)-parseInt(b); }).forEach(function(rn) {
+      const tenants = rooms[rn];
+      tenants.forEach(function(t, i) {
+        if (!t.tenant_id) {
+          tbody.append(`
+            <tr class="vacant-row">
+              ${i === 0 ? `<td rowspan="${tenants.length}" class="fw-bold align-middle">Room ${rn}</td>` : ''}
+              <td colspan="7" class="text-center">Vacant</td>
+            </tr>
+          `);
+        } else {
+          const inactive = t.status === 'Inactive';
+          tbody.append(`
+            <tr class="${inactive ? 'tenant-inactive' : ''}">
+              ${i === 0 ? `<td rowspan="${tenants.length}" class="fw-bold align-middle">Room ${rn}</td>` : ''}
+              <td>${t.name}</td>
+              <td>
+                <span class="badge ${t.status === 'Active' ? 'bg-success' : 'bg-secondary'}">${t.status}</span>
+              </td>
+              <td>${fmtDate(t.move_in)}</td>
+              <td>${t.move_out ? fmtDate(t.move_out) : '—'}</td>
+              <td class="text-end">${fmt(t.weekly_rent)}</td>
+              <td class="text-end">${t.bond ? fmt(t.bond) : '—'}</td>
+              <td class="text-end fw-semibold">${fmt(t.total_paid)}</td>
+            </tr>
+          `);
+        }
+      });
+    });
+  });
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+$(function() {
+  loadIncome();
+
+  $('#reportTabs .nav-link').on('shown.bs.tab', function() {
+    loadActiveTab();
+  });
+
+  $('#applyFilter').on('click', loadActiveTab);
+
+  $('#clearFilter').on('click', function() {
+    $('#filterFrom, #filterTo').val('');
+    loadActiveTab();
+  });
+
+  $('#printReport').on('click', function() {
+    window.print();
+  });
+
+  $('#collectionStatus').on('change', function() {
+    loadCollection();
+  });
+});
+</script>
+</body>
+</html>
