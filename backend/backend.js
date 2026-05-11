@@ -33,22 +33,127 @@ app.use('/common', express.static(path.join(__dirname, '..', 'common')));
 const frontendRouter = require('../frontend/frontend');
 app.use('/', frontendRouter);
 
+// ─── API: Properties ──────────────────────────────────────────────────────────
+
+app.get('/api/properties', (req, res) => {
+  try {
+    const props = all(`
+      SELECT p.*,
+        COUNT(DISTINCT r.id) as room_count,
+        COUNT(DISTINCT CASE WHEN t.status = 'Active' THEN t.id END) as active_tenants,
+        COALESCE(SUM(CASE WHEN l.status = '✓ Paid' THEN l.amount ELSE 0 END), 0) as total_received,
+        COUNT(CASE WHEN l.status = 'Pending' THEN 1 END) as pending_weeks
+      FROM properties p
+      LEFT JOIN rooms r ON r.property_id = p.id
+      LEFT JOIN tenants t ON t.room_id = r.id
+      LEFT JOIN ledger l ON l.tenant_id = t.id
+      GROUP BY p.id
+      ORDER BY p.created_at ASC
+    `);
+    res.json({ success: true, data: props });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/properties/:id', (req, res) => {
+  try {
+    const prop = get('SELECT * FROM properties WHERE id = ?', [req.params.id]);
+    if (!prop) return res.status(404).json({ success: false, error: 'Property not found' });
+    res.json({ success: true, data: prop });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/properties', (req, res) => {
+  try {
+    const { name, address, type, notes, room_count } = req.body;
+    if (!name) return res.status(400).json({ success: false, error: 'name is required' });
+    const propType = (type === 'whole') ? 'whole' : 'rooming';
+
+    const result = run(
+      `INSERT INTO properties (name, address, type, notes) VALUES (?, ?, ?, ?)`,
+      [name.trim(), address || '', propType, notes || '']
+    );
+    const propId = result.lastInsertRowid;
+
+    if (propType === 'rooming') {
+      // Create rooms 1..N
+      const count = Math.max(1, Math.min(20, parseInt(room_count) || 1));
+      for (let i = 1; i <= count; i++) {
+        run(`INSERT INTO rooms (property_id, room_number, description) VALUES (?, ?, ?)`,
+          [propId, i, '']);
+      }
+    } else {
+      // Whole property — one internal room
+      run(`INSERT INTO rooms (property_id, room_number, description) VALUES (?, 1, 'Whole Property')`,
+        [propId]);
+    }
+
+    res.json({ success: true, data: { id: propId } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/properties/:id', (req, res) => {
+  try {
+    const { name, address, notes } = req.body;
+    run(`UPDATE properties SET name=?, address=?, notes=? WHERE id=?`,
+      [name, address || '', notes || '', req.params.id]);
+    res.json({ success: true, message: 'Property updated' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/properties/:id', (req, res) => {
+  try {
+    const active = get(
+      `SELECT t.id FROM tenants t JOIN rooms r ON r.id = t.room_id WHERE r.property_id = ? AND t.status = 'Active' LIMIT 1`,
+      [req.params.id]
+    );
+    if (active) return res.status(400).json({ success: false, error: 'Cannot delete a property with active tenants.' });
+    const rooms = all('SELECT id FROM rooms WHERE property_id = ?', [req.params.id]);
+    for (const room of rooms) {
+      run('DELETE FROM ledger WHERE tenant_id IN (SELECT id FROM tenants WHERE room_id = ?)', [room.id]);
+      run('DELETE FROM bond_payments WHERE tenant_id IN (SELECT id FROM tenants WHERE room_id = ?)', [room.id]);
+      run('DELETE FROM tenants WHERE room_id = ?', [room.id]);
+    }
+    run('DELETE FROM rooms WHERE property_id = ?', [req.params.id]);
+    run('DELETE FROM expenses WHERE property_id = ?', [req.params.id]);
+    run('DELETE FROM properties WHERE id = ?', [req.params.id]);
+    res.json({ success: true, message: 'Property deleted' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ─── API: Rooms ────────────────────────────────────────────────────────────────
 
 app.get('/api/rooms', (req, res) => {
   try {
+    const { property_id } = req.query;
+    let where = '';
+    const params = [];
+    if (property_id) { where = 'WHERE r.property_id = ?'; params.push(property_id); }
+
     const rooms = all(`
-      SELECT r.*, 
+      SELECT r.*,
+        p.name as property_name, p.type as property_type,
         t.id as tenant_id, t.name as tenant_name, t.weekly_rent, t.bond,
         t.move_in, t.move_out, t.status as tenant_status,
         COALESCE(SUM(CASE WHEN l.status = '✓ Paid' THEN l.amount ELSE 0 END), 0) as total_received,
         COUNT(CASE WHEN l.status = 'Pending' THEN 1 END) as pending_weeks
       FROM rooms r
+      LEFT JOIN properties p ON p.id = r.property_id
       LEFT JOIN tenants t ON t.room_id = r.id AND t.status = 'Active'
       LEFT JOIN ledger l ON l.tenant_id = t.id
+      ${where}
       GROUP BY r.id
       ORDER BY r.room_number
-    `);
+    `, params);
     res.json({ success: true, data: rooms });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -58,9 +163,11 @@ app.get('/api/rooms', (req, res) => {
 app.get('/api/rooms/:id', (req, res) => {
   try {
     const room = get(`
-      SELECT r.*, t.id as tenant_id, t.name as tenant_name, t.weekly_rent,
+      SELECT r.*, p.name as property_name, p.type as property_type,
+        t.id as tenant_id, t.name as tenant_name, t.weekly_rent,
         t.bond, t.move_in, t.move_out, t.status as tenant_status, t.notes
       FROM rooms r
+      LEFT JOIN properties p ON p.id = r.property_id
       LEFT JOIN tenants t ON t.room_id = r.id AND t.status = 'Active'
       WHERE r.id = ?
     `, [req.params.id]);
@@ -73,10 +180,10 @@ app.get('/api/rooms/:id', (req, res) => {
 
 app.post('/api/rooms', (req, res) => {
   try {
-    const { room_number, description } = req.body;
+    const { room_number, description, property_id } = req.body;
     if (!room_number) return res.status(400).json({ success: false, error: 'room_number is required' });
-    const result = run(`INSERT INTO rooms (room_number, description) VALUES (?, ?)`,
-      [room_number, description || '']);
+    const result = run(`INSERT INTO rooms (property_id, room_number, description) VALUES (?, ?, ?)`,
+      [property_id || null, room_number, description || '']);
     res.json({ success: true, data: { id: result.lastInsertRowid } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -85,9 +192,11 @@ app.post('/api/rooms', (req, res) => {
 
 app.put('/api/rooms/:id', (req, res) => {
   try {
-    const { room_number, description } = req.body;
-    run(`UPDATE rooms SET room_number=?, description=? WHERE id=?`,
-      [room_number, description || '', req.params.id]);
+    const { room_number, description, property_id } = req.body;
+    const existing = get('SELECT * FROM rooms WHERE id=?', [req.params.id]);
+    if (!existing) return res.status(404).json({ success: false, error: 'Room not found' });
+    run(`UPDATE rooms SET room_number=?, description=?, property_id=? WHERE id=?`,
+      [room_number, description || '', property_id !== undefined ? property_id : existing.property_id, req.params.id]);
     res.json({ success: true, message: 'Room updated' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -109,9 +218,10 @@ app.delete('/api/rooms/:id', (req, res) => {
 
 app.get('/api/tenants', (req, res) => {
   try {
-    const { status, room_id } = req.query;
+    const { status, room_id, property_id } = req.query;
     let query = `
-      SELECT t.*, r.room_number,
+      SELECT t.*, r.room_number, r.property_id,
+        p.name as property_name, p.type as property_type,
         COALESCE(SUM(CASE WHEN l.status = '✓ Paid' THEN l.amount ELSE 0 END), 0) as total_received,
         COALESCE(SUM(l.amount), 0) as total_expected,
         COUNT(CASE WHEN l.status = 'Pending' THEN 1 END) as pending_weeks,
@@ -129,12 +239,14 @@ app.get('/api/tenants', (req, res) => {
          ORDER BY bp.created_at DESC LIMIT 1) as bond_refund_date
       FROM tenants t
       JOIN rooms r ON r.id = t.room_id
+      LEFT JOIN properties p ON p.id = r.property_id
       LEFT JOIN ledger l ON l.tenant_id = t.id
       WHERE 1=1
     `;
     const params = [];
-    if (status)  { query += ' AND t.status = ?';  params.push(status); }
-    if (room_id) { query += ' AND t.room_id = ?'; params.push(room_id); }
+    if (status)      { query += ' AND t.status = ?';      params.push(status); }
+    if (room_id)     { query += ' AND t.room_id = ?';     params.push(room_id); }
+    if (property_id) { query += ' AND r.property_id = ?'; params.push(property_id); }
     query += ' GROUP BY t.id ORDER BY t.created_at DESC';
 
     const tenants = all(query, params);
@@ -147,10 +259,12 @@ app.get('/api/tenants', (req, res) => {
 app.get('/api/tenants/:id', (req, res) => {
   try {
     const tenant = get(`
-      SELECT t.*, r.room_number,
+      SELECT t.*, r.room_number, r.property_id,
+        p.name as property_name, p.type as property_type,
         COALESCE(SUM(CASE WHEN l.status = '✓ Paid' THEN l.amount ELSE 0 END), 0) as total_received
       FROM tenants t
       JOIN rooms r ON r.id = t.room_id
+      LEFT JOIN properties p ON p.id = r.property_id
       LEFT JOIN ledger l ON l.tenant_id = t.id
       WHERE t.id = ?
       GROUP BY t.id
@@ -377,7 +491,17 @@ app.delete('/api/bond/:id', (req, res) => {
 
 app.get('/api/expenses', (req, res) => {
   try {
-    const expenses = all('SELECT * FROM expenses ORDER BY date DESC');
+    const { property_id } = req.query;
+    let where = '';
+    const params = [];
+    if (property_id) { where = 'WHERE e.property_id = ?'; params.push(property_id); }
+    const expenses = all(`
+      SELECT e.*, p.name as property_name
+      FROM expenses e
+      LEFT JOIN properties p ON p.id = e.property_id
+      ${where}
+      ORDER BY e.date DESC
+    `, params);
     res.json({ success: true, data: expenses });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -386,10 +510,10 @@ app.get('/api/expenses', (req, res) => {
 
 app.post('/api/expenses', (req, res) => {
   try {
-    const { date, description, amount, category, notes } = req.body;
+    const { date, description, amount, category, notes, property_id } = req.body;
     const result = run(`
-      INSERT INTO expenses (date, description, amount, category, notes) VALUES (?, ?, ?, ?, ?)
-    `, [date, description, amount, category || 'General', notes || '']);
+      INSERT INTO expenses (property_id, date, description, amount, category, notes) VALUES (?, ?, ?, ?, ?, ?)
+    `, [property_id || null, date, description, amount, category || 'General', notes || '']);
     res.json({ success: true, data: { id: result.lastInsertRowid } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -398,10 +522,13 @@ app.post('/api/expenses', (req, res) => {
 
 app.put('/api/expenses/:id', (req, res) => {
   try {
-    const { date, description, amount, category, notes } = req.body;
+    const { date, description, amount, category, notes, property_id } = req.body;
+    const existing = get('SELECT * FROM expenses WHERE id=?', [req.params.id]);
+    if (!existing) return res.status(404).json({ success: false, error: 'Not found' });
     run(`
-      UPDATE expenses SET date=?, description=?, amount=?, category=?, notes=? WHERE id=?
-    `, [date, description, amount, category, notes || '', req.params.id]);
+      UPDATE expenses SET property_id=?, date=?, description=?, amount=?, category=?, notes=? WHERE id=?
+    `, [property_id !== undefined ? (property_id || null) : existing.property_id,
+        date, description, amount, category, notes || '', req.params.id]);
     res.json({ success: true, message: 'Expense updated' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -510,16 +637,19 @@ app.get('/api/reports/income-summary', (req, res) => {
 // Rent Collection — per-tenant payment breakdown
 app.get('/api/reports/rent-collection', (req, res) => {
   try {
-    const { from, to, status } = req.query;
+    const { from, to, status, property_id } = req.query;
     const params = [];
     let lWhere = '';
     if (from) { lWhere += ' AND l.start_date >= ?'; params.push(from); }
     if (to)   { lWhere += ' AND l.start_date <= ?'; params.push(to); }
     if (status && status !== 'All') { params.push(status); }
+    if (property_id) { params.push(property_id); }
 
     const rows = all(`
       SELECT
-        t.id, t.name, r.room_number, t.weekly_rent, t.move_in, t.move_out, t.status,
+        t.id, t.name, r.room_number, r.property_id,
+        p.name as property_name, p.type as property_type,
+        t.weekly_rent, t.move_in, t.move_out, t.status,
         COUNT(l.id) as total_weeks,
         COALESCE(SUM(CASE WHEN l.status = '✓ Paid'  THEN 1 ELSE 0 END), 0) as paid_weeks,
         COALESCE(SUM(CASE WHEN l.status = 'Pending'  THEN 1 ELSE 0 END), 0) as pending_weeks,
@@ -528,8 +658,11 @@ app.get('/api/reports/rent-collection', (req, res) => {
         COALESCE(SUM(CASE WHEN l.status = 'Pending'  THEN l.amount ELSE 0 END), 0) as total_pending
       FROM tenants t
       JOIN rooms r ON r.id = t.room_id
+      LEFT JOIN properties p ON p.id = r.property_id
       LEFT JOIN ledger l ON l.tenant_id = t.id ${lWhere}
-      WHERE 1=1 ${(status && status !== 'All') ? 'AND t.status = ?' : ''}
+      WHERE 1=1
+        ${(status && status !== 'All') ? 'AND t.status = ?' : ''}
+        ${property_id ? 'AND r.property_id = ?' : ''}
       GROUP BY t.id
       ORDER BY t.status, r.room_number
     `, params);
@@ -588,18 +721,26 @@ app.get('/api/reports/profit-loss', (req, res) => {
 // Occupancy — tenant history per room
 app.get('/api/reports/occupancy', (req, res) => {
   try {
+    const { property_id } = req.query;
+    let where = '';
+    const params = [];
+    if (property_id) { where = 'WHERE r.property_id = ?'; params.push(property_id); }
+
     const rows = all(`
       SELECT
-        r.id as room_id, r.room_number, r.description,
+        r.id as room_id, r.room_number, r.description, r.property_id,
+        p.name as property_name, p.type as property_type,
         t.id as tenant_id, t.name, t.move_in, t.move_out, t.status,
         t.weekly_rent, t.bond,
         COALESCE(SUM(CASE WHEN l.status = '✓ Paid' THEN l.amount ELSE 0 END), 0) as total_paid
       FROM rooms r
+      LEFT JOIN properties p ON p.id = r.property_id
       LEFT JOIN tenants t ON t.room_id = r.id
       LEFT JOIN ledger l ON l.tenant_id = t.id
+      ${where}
       GROUP BY r.id, t.id
       ORDER BY r.room_number, t.created_at DESC
-    `);
+    `, params);
     res.json({ success: true, data: rows });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
