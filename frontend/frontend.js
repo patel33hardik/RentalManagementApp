@@ -19,12 +19,24 @@ router.get('/dashboard', (req, res) => {
   res.render('dashboard', { title: 'Dashboard', activePage: 'dashboard' });
 });
 
+router.get('/properties', (req, res) => {
+  res.render('properties', { title: 'Properties', activePage: 'properties' });
+});
+
+router.get('/add-property', (req, res) => {
+  res.render('add_property', { title: 'Add Property', activePage: 'properties' });
+});
+
 router.get('/rooms', (req, res) => {
   res.render('rooms', { title: 'Rooms Overview', activePage: 'rooms' });
 });
 
 router.get('/tenant/:id', (req, res) => {
   res.render('tenant', { title: 'Tenant Detail', activePage: 'rooms', tenantId: req.params.id });
+});
+
+router.get('/property/:id', (req, res) => {
+  res.render('property', { title: 'Property Detail', activePage: 'properties', propertyId: req.params.id });
 });
 
 router.get('/add-tenant', (req, res) => {

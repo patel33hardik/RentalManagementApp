@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Add Property — Rental Manager</title>
+  <link rel="stylesheet" href="/common/thirdparty/bootstrap/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/common/thirdparty/bootstrap/css/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="/static/css/app.css">
+  <style>
+    .type-option {
+      border: 2px solid var(--color-border);
+      border-radius: var(--radius);
+      padding: 24px 20px;
+      cursor: pointer;
+      transition: border-color 150ms ease, background 150ms ease;
+      text-align: center;
+      height: 100%;
+    }
+    .type-option:hover { border-color: var(--color-primary); background: #f8faff; }
+    .type-option.selected {
+      border-color: var(--color-primary);
+      background: #eff6ff;
+    }
+    .type-option__icon {
+      font-size: 36px;
+      margin-bottom: 12px;
+      color: #94a3b8;
+    }
+    .type-option.selected .type-option__icon { color: var(--color-primary); }
+    .type-option__title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1e293b;
+      margin-bottom: 6px;
+    }
+    .type-option__desc {
+      font-size: 12px;
+      color: #64748b;
+      line-height: 1.5;
+    }
+    .step-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 28px;
+    }
+    .step-dot {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .step-dot--active   { background: var(--color-primary); color: white; }
+    .step-dot--done     { background: var(--color-success); color: white; }
+    .step-dot--inactive { background: #e2e8f0; color: #94a3b8; }
+    .step-line { flex: 1; height: 2px; background: #e2e8f0; }
+    .step-line--done { background: var(--color-success); }
+    .step-label { font-size: 11px; color: #64748b; font-weight: 500; }
+  </style>
+</head>
+<body>
+
+<%- include('_sidebar', { activePage: 'properties' }) %>
+
+<div class="main-wrapper" id="mainWrapper">
+  <%- include('_topbar', { title: 'Add New Property' }) %>
+
+  <main class="page-content">
+    <div class="row justify-content-center">
+      <div class="col-lg-7">
+
+        <div class="panel">
+          <div class="panel__header">
+            <h2 class="panel__title">
+              <i class="bi bi-building-add me-2"></i>New Property
+            </h2>
+            <a href="/properties" class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-arrow-left me-1"></i>Back
+            </a>
+          </div>
+          <div class="panel__body">
+
+            <!-- Step indicator -->
+            <div class="step-indicator" id="stepIndicator">
+              <div class="step-dot step-dot--active" id="dot1">1</div>
+              <div class="step-line" id="line1"></div>
+              <div class="step-dot step-dot--inactive" id="dot2">2</div>
+              <div class="step-line" id="line2"></div>
+              <div class="step-dot step-dot--inactive" id="dot3">3</div>
+            </div>
+
+            <!-- Step 1: Details -->
+            <div id="step1">
+              <h5 class="mb-1">Property Details</h5>
+              <p class="text-muted small mb-4">Give your property a name and optional address.</p>
+
+              <div class="row g-3">
+                <div class="col-12">
+                  <label class="form-label">Property Name <span class="text-danger">*</span></label>
+                  <input type="text" class="form-control" id="propName" placeholder="e.g. 12 Oak Street, Beach House, Unit 3B">
+                </div>
+                <div class="col-12">
+                  <label class="form-label">Address</label>
+                  <input type="text" class="form-control" id="propAddress" placeholder="Full street address">
+                </div>
+                <div class="col-12">
+                  <label class="form-label">Notes</label>
+                  <textarea class="form-control" id="propNotes" rows="2" placeholder="Any notes about this property…"></textarea>
+                </div>
+              </div>
+
+              <div class="d-flex gap-2 mt-4">
+                <button class="btn btn-primary flex-grow-1" id="step1Next">
+                  Next <i class="bi bi-arrow-right ms-1"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 2: Type selection -->
+            <div id="step2" style="display:none;">
+              <h5 class="mb-1">Rental Type</h5>
+              <p class="text-muted small mb-4">How do you rent out this property?</p>
+
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <div class="type-option" id="optRooming" onclick="selectType('rooming')">
+                    <div class="type-option__icon"><i class="bi bi-door-open"></i></div>
+                    <div class="type-option__title">Rooming</div>
+                    <div class="type-option__desc">Multiple rooms rented separately to individual tenants. You track each room's rent and ledger independently.</div>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="type-option" id="optWhole" onclick="selectType('whole')">
+                    <div class="type-option__icon"><i class="bi bi-house-door"></i></div>
+                    <div class="type-option__title">Whole Property</div>
+                    <div class="type-option__desc">The entire property is rented to a single tenant — like a house or apartment lease.</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="d-flex gap-2 mt-4">
+                <button class="btn btn-outline-secondary" id="step2Back">
+                  <i class="bi bi-arrow-left me-1"></i>Back
+                </button>
+                <button class="btn btn-primary flex-grow-1" id="step2Next" disabled>
+                  Next <i class="bi bi-arrow-right ms-1"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 3: Room count (rooming only) or confirm (whole) -->
+            <div id="step3" style="display:none;">
+
+              <!-- Rooming: ask room count -->
+              <div id="step3Rooming">
+                <h5 class="mb-1">Rooms</h5>
+                <p class="text-muted small mb-4">How many rooms does this property have?</p>
+
+                <div class="row g-3 justify-content-center">
+                  <div class="col-sm-6">
+                    <label class="form-label">Number of Rooms <span class="text-danger">*</span></label>
+                    <input type="number" class="form-control form-control-lg text-center" id="roomCount" value="4" min="1" max="20" style="font-size:28px; font-weight:700; font-family:var(--font-mono)">
+                    <div class="form-text text-center">Rooms will be numbered 1 – N. You can add more rooms later.</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Whole: just confirm -->
+              <div id="step3Whole" style="display:none;">
+                <h5 class="mb-1">Ready to Create</h5>
+                <p class="text-muted small mb-2">This will create a whole-property rental. You can add a tenant straight away from the property page.</p>
+              </div>
+
+              <!-- Summary box -->
+              <div class="alert alert-info mt-4" id="summaryBox">
+                <i class="bi bi-info-circle me-2"></i>
+                <span id="summaryText"></span>
+              </div>
+
+              <div class="d-flex gap-2 mt-3">
+                <button class="btn btn-outline-secondary" id="step3Back">
+                  <i class="bi bi-arrow-left me-1"></i>Back
+                </button>
+                <button class="btn btn-primary flex-grow-1" id="createBtn">
+                  <i class="bi bi-building-add me-2"></i>Create Property
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<%- include('_scripts') %>
+<script>
+let selectedType = null;
+
+function selectType(type) {
+  selectedType = type;
+  $('#optRooming').toggleClass('selected', type === 'rooming');
+  $('#optWhole').toggleClass('selected', type === 'whole');
+  $('#step2Next').prop('disabled', false);
+}
+
+function updateStepDot(dotId, state) {
+  const el = document.getElementById(dotId);
+  el.className = 'step-dot step-dot--' + state;
+  if (state === 'done') el.innerHTML = '<i class="bi bi-check"></i>';
+  else el.textContent = dotId.replace('dot','');
+}
+
+function showStep(n) {
+  $('#step1, #step2, #step3').hide();
+  $(`#step${n}`).show();
+
+  updateStepDot('dot1', n > 1 ? 'done' : 'active');
+  updateStepDot('dot2', n > 2 ? 'done' : (n === 2 ? 'active' : 'inactive'));
+  updateStepDot('dot3', n === 3 ? 'active' : 'inactive');
+  document.getElementById('line1').className = 'step-line' + (n > 1 ? ' step-line--done' : '');
+  document.getElementById('line2').className = 'step-line' + (n > 2 ? ' step-line--done' : '');
+}
+
+function updateSummary() {
+  const name = $('#propName').val().trim();
+  if (selectedType === 'rooming') {
+    const count = parseInt($('#roomCount').val()) || 4;
+    $('#summaryText').text(`Creating "${name}" as a rooming property with ${count} room${count !== 1 ? 's' : ''}.`);
+    $('#step3Rooming').show();
+    $('#step3Whole').hide();
+  } else {
+    $('#summaryText').text(`Creating "${name}" as a whole-property rental.`);
+    $('#step3Rooming').hide();
+    $('#step3Whole').show();
+  }
+}
+
+$(function() {
+  showStep(1);
+
+  $('#step1Next').on('click', function() {
+    const name = $('#propName').val().trim();
+    if (!name) { showToast('Please enter a property name', 'error'); return; }
+    showStep(2);
+  });
+
+  $('#step2Back').on('click', function() { showStep(1); });
+
+  $('#step2Next').on('click', function() {
+    if (!selectedType) return;
+    updateSummary();
+    showStep(3);
+  });
+
+  $('#step3Back').on('click', function() { showStep(2); });
+
+  $('#roomCount').on('input', updateSummary);
+
+  $('#createBtn').on('click', function() {
+    const name = $('#propName').val().trim();
+    if (!name || !selectedType) return;
+
+    const payload = {
+      name:       name,
+      address:    $('#propAddress').val().trim(),
+      notes:      $('#propNotes').val().trim(),
+      type:       selectedType,
+      room_count: selectedType === 'rooming' ? (parseInt($('#roomCount').val()) || 4) : 1,
+    };
+
+    $('#createBtn').prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Creating…');
+
+    $.ajax({
+      url: '/api/properties',
+      method: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify(payload),
+      success: function(res) {
+        if (res.success) {
+          showToast('Property created!', 'success');
+          const dest = selectedType === 'rooming'
+            ? `/rooms?property=${res.data.id}`
+            : `/property/${res.data.id}`;
+          setTimeout(() => window.location.href = dest, 900);
+        } else {
+          showToast(res.error || 'Error creating property', 'error');
+          $('#createBtn').prop('disabled', false).html('<i class="bi bi-building-add me-2"></i>Create Property');
+        }
+      },
+      error: function() {
+        showToast('Server error', 'error');
+        $('#createBtn').prop('disabled', false).html('<i class="bi bi-building-add me-2"></i>Create Property');
+      }
+    });
+  });
+});
+</script>
+</body>
+</html>
