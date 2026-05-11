@@ -25,25 +25,30 @@
             <h2 class="panel__title" id="formTitle">
               <i class="bi bi-person-plus me-2"></i>New Tenant
             </h2>
-            <a href="/rooms" class="btn btn-sm btn-outline-secondary">
-              <i class="bi bi-arrow-left me-1"></i>Back to Rooms
+            <a href="/rooms" class="btn btn-sm btn-outline-secondary" id="backBtn">
+              <i class="bi bi-arrow-left me-1"></i>Back
             </a>
           </div>
           <div class="panel__body">
 
             <form id="tenantForm">
               <input type="hidden" id="tenantId">
+              <input type="hidden" id="contextPropertyId">
 
               <div class="row g-3">
-                <div class="col-md-6">
-                  <label class="form-label">Room Number <span class="text-danger">*</span></label>
+
+                <!-- Room selector: shown for rooming properties, hidden for whole-property -->
+                <div class="col-md-6" id="roomSelectorGroup">
+                  <label class="form-label">Room <span class="text-danger">*</span></label>
                   <select class="form-select" id="roomId" required>
-                    <option value="">Select room…</option>
-                    <option value="1">Room 1 — Master Bedroom</option>
-                    <option value="2">Room 2</option>
-                    <option value="3">Room 3</option>
-                    <option value="4">Room 4</option>
+                    <option value="">Loading rooms…</option>
                   </select>
+                </div>
+
+                <!-- Whole-property: show read-only property name instead of room picker -->
+                <div class="col-md-6" id="wholePropGroup" style="display:none;">
+                  <label class="form-label">Property</label>
+                  <input type="text" class="form-control" id="wholePropName" readonly>
                 </div>
 
                 <div class="col-md-6">
@@ -101,7 +106,7 @@
                 <button type="submit" class="btn btn-primary flex-grow-1" id="submitBtn">
                   <i class="bi bi-person-check me-2"></i>Add Tenant
                 </button>
-                <a href="/rooms" class="btn btn-outline-secondary">Cancel</a>
+                <a href="/rooms" class="btn btn-outline-secondary" id="cancelBtn">Cancel</a>
               </div>
 
             </form>
@@ -118,13 +123,21 @@
 <%- include('_scripts') %>
 <script>
 $(function() {
-  // Pre-fill room if ?room= param is set
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('room')) $('#roomId').val(params.get('room'));
+  const params     = new URLSearchParams(window.location.search);
+  const preRoom    = params.get('room');      // room DB id
+  const propParam  = params.get('property');  // property id
+  const editId     = params.get('edit');
 
-  // Edit mode
-  const editId = params.get('edit');
+  // Set smart back link
+  if (propParam) {
+    const backHref = `/rooms?property=${propParam}`;
+    $('#backBtn').attr('href', backHref);
+    $('#cancelBtn').attr('href', backHref);
+  }
+  $('#contextPropertyId').val(propParam || '');
+
   if (editId) {
+    // Edit mode: load tenant first, then load all rooms so we can pre-select
     $('#formTitle').html('<i class="bi bi-pencil me-2"></i>Edit Tenant');
     $('#submitBtn').html('<i class="bi bi-save me-2"></i>Save Changes');
     $('#tenantId').val(editId);
@@ -132,7 +145,7 @@ $(function() {
     $.getJSON(`/api/tenants/${editId}`, function(res) {
       if (!res.success) return;
       const t = res.data;
-      $('#roomId').val(t.room_id);
+      loadRooms(t.property_id, t.room_id, t.property_type);
       $('#tenantName').val(t.name);
       $('#weeklyRent').val(t.weekly_rent);
       $('#bondAmount').val(t.bond);
@@ -141,10 +154,62 @@ $(function() {
       $('#tenantStatus').val(t.status || 'Active');
       $('#notes').val(t.notes || '');
       updateAlert(t.status || 'Active');
+
+      if (t.property_type === 'whole') {
+        $('#backBtn').attr('href', `/property/${t.property_id}`);
+        $('#cancelBtn').attr('href', `/property/${t.property_id}`);
+      }
+    });
+  } else {
+    // Add mode: load rooms filtered by property if provided
+    loadRooms(propParam, preRoom, null);
+  }
+
+  // Load rooms from API, optionally filtered by property
+  function loadRooms(propertyId, preSelectRoomId, knownType) {
+    const url = propertyId
+      ? `/api/rooms?property_id=${propertyId}`
+      : '/api/rooms';
+
+    $.getJSON(url, function(res) {
+      if (!res.success) return;
+      const rooms = res.data;
+
+      // Detect whole-property: single hidden room
+      const isWhole = knownType === 'whole' ||
+        (rooms.length === 1 && rooms[0].property_type === 'whole');
+
+      if (isWhole && rooms.length === 1) {
+        // Hide room dropdown, show property name label
+        $('#roomSelectorGroup').hide();
+        $('#wholePropGroup').show();
+        $('#wholePropName').val(rooms[0].property_name || 'Whole Property');
+        $('#roomId').val(rooms[0].id).removeAttr('required');
+        // hidden field carries the value
+        $('<input type="hidden" id="roomIdHidden">').val(rooms[0].id).appendTo('#tenantForm');
+        return;
+      }
+
+      // Build options
+      const select = $('#roomId');
+      select.empty().append('<option value="">Select room…</option>');
+      rooms.forEach(function(r) {
+        const label = rooms.some(x => x.property_id !== r.property_id)
+          ? `${r.property_name} — Room ${r.room_number}${r.description ? ' · ' + r.description : ''}`
+          : `Room ${r.room_number}${r.description ? ' — ' + r.description : ''}`;
+        select.append(`<option value="${r.id}">${label}</option>`);
+      });
+
+      if (preSelectRoomId) select.val(preSelectRoomId);
     });
   }
 
-  // Dynamically update the alert when status changes
+  // Use hidden field value for whole-property
+  function getRoomId() {
+    const hidden = $('#roomIdHidden');
+    return hidden.length ? hidden.val() : $('#roomId').val();
+  }
+
   $('#tenantStatus').on('change', function() {
     updateAlert($(this).val());
   });
@@ -162,8 +227,11 @@ $(function() {
   $('#tenantForm').on('submit', function(e) {
     e.preventDefault();
     const editId = $('#tenantId').val();
+    const roomId = getRoomId();
+    if (!roomId) { showToast('Please select a room', 'error'); return; }
+
     const data = {
-      room_id:     $('#roomId').val(),
+      room_id:     roomId,
       name:        $('#tenantName').val().trim(),
       weekly_rent: $('#weeklyRent').val(),
       bond:        $('#bondAmount').val() || 0,
@@ -172,6 +240,8 @@ $(function() {
       status:      $('#tenantStatus').val(),
       notes:       $('#notes').val(),
     };
+
+    const propId = $('#contextPropertyId').val();
 
     if (editId) {
       $.ajax({
@@ -182,7 +252,8 @@ $(function() {
         success: function(res) {
           if (res.success) {
             showToast('Tenant updated successfully', 'success');
-            setTimeout(() => window.location.href = '/rooms', 1000);
+            const dest = propId ? `/rooms?property=${propId}` : '/rooms';
+            setTimeout(() => window.location.href = dest, 1000);
           } else {
             showToast(res.error || 'Error updating tenant', 'error');
           }
