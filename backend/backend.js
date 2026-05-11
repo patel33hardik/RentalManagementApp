@@ -423,16 +423,17 @@ app.delete('/api/ledger/:id', (req, res) => {
 
 app.get('/api/bond', (req, res) => {
   try {
-    const { tenant_status } = req.query;
+    const { tenant_status, property_id } = req.query;
     let query = `
-      SELECT bp.*, t.name as tenant_name, t.status as tenant_status, r.room_number
+      SELECT bp.*, t.name as tenant_name, t.status as tenant_status, r.room_number, r.property_id
       FROM bond_payments bp
       JOIN tenants t ON t.id = bp.tenant_id
       JOIN rooms r ON r.id = t.room_id
       WHERE 1=1
     `;
     const params = [];
-    if (tenant_status) { query += ' AND t.status = ?'; params.push(tenant_status); }
+    if (tenant_status) { query += ' AND t.status = ?';      params.push(tenant_status); }
+    if (property_id)   { query += ' AND r.property_id = ?'; params.push(property_id); }
     query += ' ORDER BY bp.date DESC';
     const bonds = all(query, params);
     res.json({ success: true, data: bonds });
@@ -548,32 +549,36 @@ app.delete('/api/expenses/:id', (req, res) => {
 
 app.get('/api/dashboard', (req, res) => {
   try {
-    const incomeResult = get(`
-      SELECT COALESCE(SUM(amount), 0) as total FROM ledger WHERE status = '✓ Paid'
-    `);
+    const { property_id } = req.query;
+    const p = property_id ? [property_id] : [];
+
+    // Build filter fragments — join through rooms when filtering by property
+    const lJoin  = property_id ? 'JOIN tenants _lt ON _lt.id = l.tenant_id JOIN rooms _lr ON _lr.id = _lt.room_id' : '';
+    const lWhere = property_id ? 'WHERE _lr.property_id = ?' : 'WHERE 1=1';
+    const tJoin  = property_id ? 'JOIN rooms _tr ON _tr.id = t.room_id' : '';
+    const tWhere = property_id ? 'WHERE _tr.property_id = ?' : 'WHERE 1=1';
+    const bJoin  = property_id ? 'JOIN tenants _bt ON _bt.id = bp.tenant_id JOIN rooms _br ON _br.id = _bt.room_id' : '';
+    const bWhere = property_id ? 'WHERE _br.property_id = ?' : 'WHERE 1=1';
+    const eWhere = property_id ? 'WHERE property_id = ?' : 'WHERE 1=1';
+
+    const incomeResult = get(`SELECT COALESCE(SUM(l.amount),0) as total FROM ledger l ${lJoin} ${lWhere} AND l.status='✓ Paid'`, p);
     const income = incomeResult ? incomeResult.total : 0;
 
-    const expensesResult = get(`
-      SELECT COALESCE(SUM(amount), 0) as total FROM expenses
-    `);
+    const expensesResult = get(`SELECT COALESCE(SUM(amount),0) as total FROM expenses ${eWhere}`, p);
     const expenses = expensesResult ? expensesResult.total : 0;
 
     const bondResult = get(`
       SELECT
-        COALESCE(SUM(amount), 0) as collected,
-        COALESCE(SUM(CASE WHEN refund_date IS NOT NULL THEN COALESCE(refund_amount, amount) ELSE 0 END), 0) as refunded
-      FROM bond_payments
-    `);
+        COALESCE(SUM(bp.amount),0) as collected,
+        COALESCE(SUM(CASE WHEN bp.refund_date IS NOT NULL THEN COALESCE(bp.refund_amount,bp.amount) ELSE 0 END),0) as refunded
+      FROM bond_payments bp ${bJoin} ${bWhere}
+    `, p);
     const bond = bondResult || { collected: 0, refunded: 0 };
 
-    const activeRoomsResult = get(`
-      SELECT COUNT(*) as c FROM tenants WHERE status = 'Active'
-    `);
+    const activeRoomsResult = get(`SELECT COUNT(*) as c FROM tenants t ${tJoin} ${tWhere} AND t.status='Active'`, p);
     const activeRooms = activeRoomsResult ? activeRoomsResult.c : 0;
 
-    const pendingWeeksResult = get(`
-      SELECT COUNT(*) as c FROM ledger WHERE status = 'Pending'
-    `);
+    const pendingWeeksResult = get(`SELECT COUNT(*) as c FROM ledger l ${lJoin} ${lWhere} AND l.status='Pending'`, p);
     const pendingWeeks = pendingWeeksResult ? pendingWeeksResult.c : 0;
 
     const recentLedger = all(`
@@ -581,8 +586,9 @@ app.get('/api/dashboard', (req, res) => {
       FROM ledger l
       JOIN tenants t ON t.id = l.tenant_id
       JOIN rooms r ON r.id = t.room_id
+      ${property_id ? 'WHERE r.property_id = ?' : ''}
       ORDER BY l.start_date DESC LIMIT 10
-    `);
+    `, p);
 
     res.json({
       success: true,

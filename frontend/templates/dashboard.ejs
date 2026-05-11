@@ -61,7 +61,7 @@
     <div class="panel mb-4">
       <div class="panel__header">
         <h2 class="panel__title"><i class="bi bi-people me-2"></i>Active Tenants</h2>
-        <a href="/add-tenant" class="btn btn-sm btn-primary">
+        <a href="/add-tenant" class="btn btn-sm btn-primary" id="addTenantLink">
           <i class="bi bi-person-plus me-1"></i>Add Tenant
         </a>
       </div>
@@ -123,13 +123,20 @@
 <%- include('_scripts') %>
 <script>
 $(function() {
-  loadSummary();
-  loadActiveTenants();
-  loadMovedOut();
+  const prop = requireProp();
+  if (!prop) return;
+
+  document.title = prop.name + ' — Dashboard';
+  $('#addTenantLink').attr('href', `/add-tenant?property=${prop.id}`);
+
+  const pid = prop.id;
+  loadSummary(pid);
+  loadActiveTenants(pid);
+  loadMovedOut(pid);
 });
 
-function loadSummary() {
-  $.getJSON('/api/dashboard', function(res) {
+function loadSummary(pid) {
+  $.getJSON(`/api/dashboard?property_id=${pid}`, function(res) {
     if (!res.success) return;
     const d = res.data;
     $('#totalIncome').text(fmt(d.total_income));
@@ -139,8 +146,8 @@ function loadSummary() {
   });
 }
 
-function loadActiveTenants() {
-  $.getJSON('/api/tenants?status=Active', function(res) {
+function loadActiveTenants(pid) {
+  $.getJSON(`/api/tenants?status=Active&property_id=${pid}`, function(res) {
     const tbody = $('#activeTable tbody');
     tbody.empty();
     if (!res.success || res.data.length === 0) {
@@ -169,8 +176,8 @@ function loadActiveTenants() {
   });
 }
 
-function loadMovedOut() {
-  $.getJSON('/api/tenants?status=Inactive', function(res) {
+function loadMovedOut(pid) {
+  $.getJSON(`/api/tenants?status=Inactive&property_id=${pid}`, function(res) {
     const tbody = $('#movedOutTable tbody');
     tbody.empty();
     if (!res.success || res.data.length === 0) {

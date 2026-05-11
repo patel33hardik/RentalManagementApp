@@ -18,7 +18,9 @@
   <main class="page-content">
 
     <div class="d-flex justify-content-between align-items-center mb-4">
-      <p class="text-muted mb-0" id="propSubtitle">Loading…</p>
+      <div>
+        <p class="text-muted mb-0" id="propSubtitle">Select a property to manage.</p>
+      </div>
       <a href="/add-property" class="btn btn-primary">
         <i class="bi bi-plus-circle me-2"></i>Add Property
       </a>
@@ -47,7 +49,7 @@
         <input type="hidden" id="editPropId">
         <div class="mb-3">
           <label class="form-label">Property Name <span class="text-danger">*</span></label>
-          <input type="text" class="form-control" id="editPropName" placeholder="e.g. 12 Main Street">
+          <input type="text" class="form-control" id="editPropName">
         </div>
         <div class="mb-3">
           <label class="form-label">Address</label>
@@ -55,14 +57,12 @@
         </div>
         <div class="mb-0">
           <label class="form-label">Notes</label>
-          <textarea class="form-control" id="editPropNotes" rows="2" placeholder="Any notes…"></textarea>
+          <textarea class="form-control" id="editPropNotes" rows="2"></textarea>
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button class="btn btn-primary" id="editSaveBtn">
-          <i class="bi bi-save me-1"></i>Save Changes
-        </button>
+        <button class="btn btn-primary" id="editSaveBtn"><i class="bi bi-save me-1"></i>Save</button>
       </div>
     </div>
   </div>
@@ -78,13 +78,11 @@
       </div>
       <div class="modal-body">
         <p class="mb-1">Delete <strong id="deletePropName"></strong>?</p>
-        <p class="text-muted small mb-0">All rooms, tenants and ledger records for this property will be permanently removed.</p>
+        <p class="text-muted small mb-0">All rooms, tenants and ledger records will be permanently removed.</p>
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button class="btn btn-danger" id="deleteConfirmBtn">
-          <i class="bi bi-trash me-1"></i>Delete
-        </button>
+        <button class="btn btn-danger" id="deleteConfirmBtn"><i class="bi bi-trash me-1"></i>Delete</button>
       </div>
     </div>
   </div>
@@ -94,11 +92,34 @@
 <script>
 let deletePropId = null;
 
+function openProp(id, name, type, address) {
+  setProp({ id, name, type, address });
+  window.location.href = '/dashboard';
+}
+
+function escHtml(str) {
+  return String(str).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+}
+
 function loadProperties() {
   $.getJSON('/api/properties', function(res) {
     if (!res.success) return;
-    const data = res.data;
-    $('#propSubtitle').text(data.length === 1 ? '1 property' : `${data.length} properties`);
+    const data    = res.data;
+    const current = getProp();
+
+    $('#propSubtitle').text(
+      data.length === 0 ? 'No properties yet. Add one to get started.' :
+      data.length === 1 ? '1 property — click Open to manage it.' :
+      `${data.length} properties — select one to manage.`
+    );
+
+    // Auto-select if only one property and none stored
+    if (data.length === 1 && !current) {
+      const p = data[0];
+      setProp({ id: p.id, name: p.name, type: p.type, address: p.address || '' });
+      window.location.href = '/dashboard';
+      return;
+    }
 
     const container = $('#propertyCards');
     container.empty();
@@ -107,43 +128,40 @@ function loadProperties() {
       container.html(`
         <div class="col-12 text-center py-5">
           <i class="bi bi-building display-4 text-muted"></i>
-          <p class="text-muted mt-3 mb-4">No properties yet. Add your first one to get started.</p>
+          <p class="text-muted mt-3 mb-4">No properties yet.</p>
           <a href="/add-property" class="btn btn-primary"><i class="bi bi-plus-circle me-2"></i>Add Property</a>
         </div>`);
       return;
     }
 
     data.forEach(function(p) {
-      const isRooming = p.type === 'rooming';
-      const typeLabel = isRooming ? 'Rooming' : 'Whole Property';
-      const typeBg    = isRooming ? 'badge-rooming' : 'badge-whole';
-      const typeIcon  = isRooming ? 'bi-door-open' : 'bi-house-door';
+      const isRooming  = p.type === 'rooming';
+      const typeIcon   = isRooming ? 'bi-door-open' : 'bi-house-door';
+      const typeLabel  = isRooming ? 'Rooming' : 'Whole Property';
+      const isActive   = current && current.id === p.id;
 
-      const occupancyText = isRooming
+      const occupancy = isRooming
         ? `${p.active_tenants} / ${p.room_count} rooms occupied`
         : (p.active_tenants > 0 ? 'Occupied' : 'Vacant');
-
       const occupancyClass = p.active_tenants > 0 ? 'text-success' : 'text-muted';
-      const pendingBadge   = p.pending_weeks > 0
+
+      const pendingBadge = p.pending_weeks > 0
         ? `<span class="badge bg-warning text-dark ms-2">${p.pending_weeks} pending</span>`
         : '';
 
-      const viewHref = isRooming
-        ? `/rooms?property=${p.id}`
-        : `/property/${p.id}`;
-      const viewLabel = isRooming ? 'View Rooms' : 'View Tenant';
-      const viewIcon  = isRooming ? 'bi-door-open' : 'bi-person';
-
       container.append(`
         <div class="col-xl-6">
-          <div class="property-card">
+          <div class="property-card ${isActive ? 'property-card--active' : ''}"
+               style="cursor:pointer;" onclick="openProp(${p.id},'${escHtml(p.name)}','${p.type}','${escHtml(p.address||'')}')">
             <div class="property-card__header">
               <div class="property-card__icon">
                 <i class="bi ${typeIcon}"></i>
               </div>
               <div class="property-card__info">
-                <div class="property-card__name">${p.name}</div>
-                <div class="property-card__address">${p.address || '<span class="text-muted fst-italic">No address</span>'}</div>
+                <div class="property-card__name">${p.name}
+                  ${isActive ? '<span class="badge bg-primary ms-2" style="font-size:10px;">Active</span>' : ''}
+                </div>
+                <div class="property-card__address">${p.address || '<span class="fst-italic">No address</span>'}</div>
               </div>
               <div class="d-flex flex-column align-items-end gap-1">
                 <span class="property-type-badge property-type-badge--${p.type}">${typeLabel}</span>
@@ -155,7 +173,7 @@ function loadProperties() {
               <div class="property-card__stats">
                 <div class="stat-item">
                   <div class="stat-item__label">Occupancy</div>
-                  <div class="stat-item__value ${occupancyClass}" style="font-size:14px">${occupancyText}</div>
+                  <div class="stat-item__value ${occupancyClass}" style="font-size:14px;">${occupancy}</div>
                 </div>
                 <div class="stat-item">
                   <div class="stat-item__label">Total Received</div>
@@ -163,14 +181,17 @@ function loadProperties() {
                 </div>
               </div>
 
-              <div class="property-card__actions">
-                <a href="${viewHref}" class="btn btn-sm btn-primary">
-                  <i class="bi ${viewIcon} me-1"></i>${viewLabel}
-                </a>
-                <button class="btn btn-sm btn-outline-secondary" onclick="openEdit(${p.id}, '${escHtml(p.name)}', '${escHtml(p.address || '')}', '${escHtml(p.notes || '')}')">
-                  <i class="bi bi-pencil me-1"></i>Edit
+              <div class="property-card__actions" onclick="event.stopPropagation();">
+                <button class="btn btn-primary btn-sm flex-grow-1"
+                        onclick="openProp(${p.id},'${escHtml(p.name)}','${p.type}','${escHtml(p.address||'')}')">
+                  <i class="bi bi-box-arrow-in-right me-1"></i>Open
                 </button>
-                <button class="btn btn-sm btn-outline-danger ms-auto" onclick="openDelete(${p.id}, '${escHtml(p.name)}')">
+                <button class="btn btn-sm btn-outline-secondary"
+                        onclick="openEdit(${p.id},'${escHtml(p.name)}','${escHtml(p.address||'')}','${escHtml(p.notes||'')}')">
+                  <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger"
+                        onclick="openDelete(${p.id},'${escHtml(p.name)}')">
                   <i class="bi bi-trash"></i>
                 </button>
               </div>
@@ -180,10 +201,6 @@ function loadProperties() {
       `);
     });
   });
-}
-
-function escHtml(str) {
-  return String(str).replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
 function openEdit(id, name, address, notes) {
@@ -206,25 +223,19 @@ $(function() {
   $('#editSaveBtn').on('click', function() {
     const id   = $('#editPropId').val();
     const name = $('#editPropName').val().trim();
-    if (!name) { showToast('Property name is required', 'error'); return; }
-
+    if (!name) { showToast('Name is required', 'error'); return; }
     $.ajax({
-      url: `/api/properties/${id}`,
-      method: 'PUT',
-      contentType: 'application/json',
-      data: JSON.stringify({
-        name:    name,
-        address: $('#editPropAddress').val().trim(),
-        notes:   $('#editPropNotes').val().trim(),
-      }),
+      url: `/api/properties/${id}`, method: 'PUT', contentType: 'application/json',
+      data: JSON.stringify({ name, address: $('#editPropAddress').val().trim(), notes: $('#editPropNotes').val().trim() }),
       success: function(res) {
         if (res.success) {
+          // Update localStorage if this is the active property
+          const cur = getProp();
+          if (cur && cur.id == id) setProp({ ...cur, name, address: $('#editPropAddress').val().trim() });
           bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
           showToast('Property updated', 'success');
           loadProperties();
-        } else {
-          showToast(res.error || 'Error', 'error');
-        }
+        } else { showToast(res.error || 'Error', 'error'); }
       }
     });
   });
@@ -232,16 +243,16 @@ $(function() {
   $('#deleteConfirmBtn').on('click', function() {
     if (!deletePropId) return;
     $.ajax({
-      url: `/api/properties/${deletePropId}`,
-      method: 'DELETE',
+      url: `/api/properties/${deletePropId}`, method: 'DELETE',
       success: function(res) {
         if (res.success) {
+          // Clear localStorage if the deleted property was active
+          const cur = getProp();
+          if (cur && cur.id == deletePropId) localStorage.removeItem('selectedProperty');
           bootstrap.Modal.getInstance(document.getElementById('deleteModal')).hide();
           showToast('Property deleted', 'success');
           loadProperties();
-        } else {
-          showToast(res.error || 'Error', 'error');
-        }
+        } else { showToast(res.error || 'Error', 'error'); }
       }
     });
   });
