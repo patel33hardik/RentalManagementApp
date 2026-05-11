@@ -17,39 +17,170 @@
 
   <main class="page-content">
 
-    <div class="d-flex justify-content-between align-items-center mb-4">
-      <p class="text-muted mb-0">Manage your 4 rooms and their current tenants.</p>
-      <a href="/add-tenant" class="btn btn-primary">
-        <i class="bi bi-person-plus me-2"></i>Add New Tenant
-      </a>
+    <!-- Header: swapped in by JS based on property filter -->
+    <div class="d-flex justify-content-between align-items-center mb-4" id="pageHeader">
+      <div>
+        <p class="text-muted mb-0" id="pageSubtitle">Loading…</p>
+      </div>
+      <div class="d-flex gap-2" id="headerActions">
+        <!-- populated by JS -->
+      </div>
     </div>
 
-    <div class="row g-4" id="roomCards">
-      <!-- Populated by JS -->
-      <% for(let i = 0; i < 4; i++) { %>
-      <div class="col-xl-6">
-        <div class="panel loading-shimmer" style="min-height:200px;"></div>
+    <div id="roomCards">
+      <div class="row g-4">
+        <% for(let i = 0; i < 4; i++) { %>
+        <div class="col-xl-6">
+          <div class="panel loading-shimmer" style="min-height:200px;"></div>
+        </div>
+        <% } %>
       </div>
-      <% } %>
     </div>
 
   </main>
 </div>
 
+<!-- Add Room Modal -->
+<div class="modal fade" id="addRoomModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Add Room</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="addRoomPropertyId">
+        <div class="mb-3">
+          <label class="form-label">Room Number <span class="text-danger">*</span></label>
+          <input type="number" class="form-control" id="addRoomNumber" min="1" placeholder="e.g. 5">
+        </div>
+        <div class="mb-0">
+          <label class="form-label">Description</label>
+          <input type="text" class="form-control" id="addRoomDesc" placeholder="e.g. Master Bedroom">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="addRoomSaveBtn">
+          <i class="bi bi-plus me-1"></i>Add Room
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <%- include('_scripts') %>
 <script>
 $(function() {
-  $.getJSON('/api/rooms', function(res) {
-    if (!res.success) return;
-    const container = $('#roomCards');
+  const params     = new URLSearchParams(window.location.search);
+  const filterProp = params.get('property');
+
+  if (filterProp) {
+    loadSingleProperty(filterProp);
+  } else {
+    loadAllProperties();
+  }
+
+  // ── Single property view ──────────────────────────────────────────────────────
+  function loadSingleProperty(propId) {
+    $.when(
+      $.getJSON(`/api/properties/${propId}`),
+      $.getJSON(`/api/rooms?property_id=${propId}`)
+    ).done(function(propRes, roomsRes) {
+      const prop  = propRes[0].data;
+      const rooms = roomsRes[0].data;
+
+      document.title = prop.name + ' — Rooms';
+      $('#pageSubtitle').text(`${rooms.length} room${rooms.length !== 1 ? 's' : ''} · ${prop.type === 'rooming' ? 'Rooming' : 'Whole Property'}`);
+
+      // Header actions
+      let actions = `<a href="/properties" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>All Properties
+      </a>`;
+      if (prop.type === 'rooming') {
+        actions += `<button class="btn btn-sm btn-outline-primary" onclick="openAddRoom(${propId})">
+          <i class="bi bi-plus me-1"></i>Add Room
+        </button>`;
+      }
+      actions += `<a href="/add-tenant?property=${propId}" class="btn btn-sm btn-primary">
+        <i class="bi bi-person-plus me-2"></i>Add Tenant
+      </a>`;
+      $('#headerActions').html(actions);
+
+      renderRoomCards($('#roomCards'), rooms, propId);
+    });
+  }
+
+  // ── All properties view ───────────────────────────────────────────────────────
+  function loadAllProperties() {
+    $.when(
+      $.getJSON('/api/properties'),
+      $.getJSON('/api/rooms')
+    ).done(function(propsRes, roomsRes) {
+      const props    = propsRes[0].data;
+      const allRooms = roomsRes[0].data;
+
+      const total = allRooms.length;
+      $('#pageSubtitle').text(`${total} room${total !== 1 ? 's' : ''} across ${props.length} propert${props.length !== 1 ? 'ies' : 'y'}`);
+      $('#headerActions').html(`<a href="/add-tenant" class="btn btn-sm btn-primary">
+        <i class="bi bi-person-plus me-2"></i>Add Tenant
+      </a>`);
+
+      const container = $('#roomCards');
+      container.empty();
+
+      if (props.length === 0) {
+        container.html(`<div class="text-center py-5">
+          <i class="bi bi-building display-4 text-muted"></i>
+          <p class="text-muted mt-3">No properties yet.
+            <a href="/add-property">Add your first property</a> to get started.
+          </p>
+        </div>`);
+        return;
+      }
+
+      props.forEach(function(prop) {
+        const propRooms = allRooms.filter(r => r.property_id == prop.id);
+        if (propRooms.length === 0) return;
+
+        // Property group header
+        const groupId = `group_${prop.id}`;
+        const typeIcon = prop.type === 'rooming' ? 'bi-door-open' : 'bi-house-door';
+        container.append(`
+          <div class="col-12 mt-2">
+            <div class="d-flex align-items-center gap-2 mb-1">
+              <i class="bi ${typeIcon} text-primary"></i>
+              <span class="fw-semibold" style="font-size:14px">${prop.name}</span>
+              ${prop.address ? `<span class="text-muted small">· ${prop.address}</span>` : ''}
+              <a href="/rooms?property=${prop.id}" class="btn btn-xs btn-outline-secondary ms-auto">
+                <i class="bi bi-filter me-1"></i>Filter
+              </a>
+            </div>
+          </div>
+          <div class="col-12">
+            <div class="row g-4" id="${groupId}"></div>
+          </div>
+        `);
+        renderRoomCards($(`#${groupId}`), propRooms, prop.id);
+      });
+    });
+  }
+
+  // ── Shared room card renderer ─────────────────────────────────────────────────
+  function renderRoomCards(container, rooms, propId) {
     container.empty();
 
-    res.data.forEach(function(room) {
-      const occupied = !!room.tenant_name;
+    if (rooms.length === 0) {
+      container.html(`<div class="col-12 text-center py-4 text-muted">
+        <i class="bi bi-door-open display-5"></i>
+        <p class="mt-2">No rooms yet. Use Add Room to create one.</p>
+      </div>`);
+      return;
+    }
+
+    rooms.forEach(function(room) {
+      const occupied    = !!room.tenant_name;
       const statusClass = occupied ? 'occupied' : 'vacant';
-      const pct = room.total_received && room.weekly_rent
-        ? Math.min(100, Math.round((room.total_received / (room.weekly_rent * 20)) * 100))
-        : 0;
 
       container.append(`
         <div class="col-xl-6">
@@ -73,7 +204,6 @@ $(function() {
                     <div class="tenant-meta">Since ${fmtDate(room.move_in)}</div>
                   </div>
                 </div>
-
                 <div class="room-card__stats">
                   <div class="stat-item">
                     <div class="stat-item__label">Weekly Rent</div>
@@ -92,7 +222,6 @@ $(function() {
                     <div class="stat-item__value ${room.pending_weeks > 0 ? 'text-warning' : ''}">${room.pending_weeks}</div>
                   </div>
                 </div>
-
                 <div class="room-card__actions">
                   <a href="/tenant/${room.tenant_id}" class="btn btn-sm btn-primary">
                     <i class="bi bi-journal-text me-1"></i>View Ledger
@@ -105,7 +234,7 @@ $(function() {
                 <div class="text-center py-3">
                   <i class="bi bi-door-open display-6 text-muted"></i>
                   <p class="text-muted mt-2">This room is vacant</p>
-                  <a href="/add-tenant?room=${room.room_number}" class="btn btn-sm btn-primary mt-1">
+                  <a href="/add-tenant?room=${room.id}&property=${propId}" class="btn btn-sm btn-primary mt-1">
                     <i class="bi bi-person-plus me-1"></i>Add Tenant
                   </a>
                 </div>
@@ -115,8 +244,39 @@ $(function() {
         </div>
       `);
     });
+  }
+
+  // ── Add Room modal ────────────────────────────────────────────────────────────
+  $('#addRoomSaveBtn').on('click', function() {
+    const propId  = $('#addRoomPropertyId').val();
+    const number  = $('#addRoomNumber').val();
+    const desc    = $('#addRoomDesc').val().trim();
+    if (!number) { showToast('Room number is required', 'error'); return; }
+
+    $.ajax({
+      url: '/api/rooms',
+      method: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify({ property_id: propId, room_number: number, description: desc }),
+      success: function(res) {
+        if (res.success) {
+          bootstrap.Modal.getInstance(document.getElementById('addRoomModal')).hide();
+          showToast('Room added', 'success');
+          loadSingleProperty(propId);
+        } else {
+          showToast(res.error || 'Error', 'error');
+        }
+      }
+    });
   });
 });
+
+function openAddRoom(propId) {
+  $('#addRoomPropertyId').val(propId);
+  $('#addRoomNumber').val('');
+  $('#addRoomDesc').val('');
+  new bootstrap.Modal(document.getElementById('addRoomModal')).show();
+}
 
 function editTenant(id) {
   window.location.href = `/add-tenant?edit=${id}`;
