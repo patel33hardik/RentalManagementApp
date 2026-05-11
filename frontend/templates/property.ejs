@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Property — Rental Manager</title>
+  <link rel="stylesheet" href="/common/thirdparty/bootstrap/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/common/thirdparty/bootstrap/css/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+
+<%- include('_sidebar', { activePage: 'properties' }) %>
+
+<div class="main-wrapper" id="mainWrapper">
+  <%- include('_topbar', { title: 'Property Detail' }) %>
+
+  <main class="page-content">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <h4 class="mb-0" id="propName">—</h4>
+        <p class="text-muted mb-0 small" id="propAddress"></p>
+      </div>
+      <div class="d-flex gap-2">
+        <a href="/properties" class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-arrow-left me-1"></i>All Properties
+        </a>
+        <a href="/add-tenant" id="addTenantBtn" class="btn btn-sm btn-primary" style="display:none;">
+          <i class="bi bi-person-plus me-2"></i>Add Tenant
+        </a>
+      </div>
+    </div>
+
+    <!-- Whole-property single room card -->
+    <div id="wholePropertyView" style="display:none;">
+      <div class="row g-4 justify-content-center">
+        <div class="col-xl-6" id="wholeRoomCard">
+          <div class="panel loading-shimmer" style="min-height:200px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rooming: redirect handled in JS -->
+    <div id="roomingView" style="display:none;">
+      <div class="text-center py-5">
+        <i class="bi bi-door-open display-4 text-muted"></i>
+        <p class="text-muted mt-3">Redirecting to rooms view…</p>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<%- include('_scripts') %>
+<script>
+$(function() {
+  const propId = <%- propertyId %>;
+
+  $.getJSON(`/api/properties/${propId}`, function(res) {
+    if (!res.success) {
+      showToast('Property not found', 'error');
+      return;
+    }
+    const p = res.data;
+    $('#propName').text(p.name);
+    $('#propAddress').text(p.address || '');
+    document.title = p.name + ' — Rental Manager';
+
+    if (p.type === 'rooming') {
+      // Rooming properties are managed from the Rooms page
+      $('#roomingView').show();
+      window.location.href = `/rooms?property=${propId}`;
+      return;
+    }
+
+    // Whole property: show the single room/tenant card
+    $('#wholePropertyView').show();
+    loadWholeProperty(propId, p.name);
+  });
+
+  function loadWholeProperty(propId, propName) {
+    $.getJSON(`/api/rooms?property_id=${propId}`, function(res) {
+      if (!res.success || !res.data.length) return;
+      const room = res.data[0];
+      const occupied = !!room.tenant_name;
+      const statusClass = occupied ? 'occupied' : 'vacant';
+      const pct = room.total_received && room.weekly_rent
+        ? Math.min(100, Math.round((room.total_received / (room.weekly_rent * 20)) * 100))
+        : 0;
+
+      if (!occupied) {
+        $('#addTenantBtn')
+          .attr('href', `/add-tenant?room=${room.id}&property=${propId}`)
+          .show();
+      }
+
+      $('#wholeRoomCard').html(`
+        <div class="room-card room-card--${statusClass}">
+          <div class="room-card__header">
+            <div>
+              <div class="room-card__number">${propName}</div>
+              <div class="room-card__desc">Whole property rental</div>
+            </div>
+            <span class="status-badge ${occupied ? 'badge-paid' : 'badge-vacant'}">
+              ${occupied ? 'Occupied' : 'Vacant'}
+            </span>
+          </div>
+
+          <div class="room-card__body">
+            ${occupied ? `
+              <div class="room-card__tenant">
+                <div class="tenant-avatar">${room.tenant_name.charAt(0).toUpperCase()}</div>
+                <div class="tenant-info">
+                  <div class="tenant-name">${room.tenant_name}</div>
+                  <div class="tenant-meta">Since ${fmtDate(room.move_in)}</div>
+                </div>
+              </div>
+
+              <div class="room-card__stats">
+                <div class="stat-item">
+                  <div class="stat-item__label">Weekly Rent</div>
+                  <div class="stat-item__value">${fmt(room.weekly_rent)}</div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-item__label">Total Received</div>
+                  <div class="stat-item__value">${fmt(room.total_received)}</div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-item__label">Bond</div>
+                  <div class="stat-item__value">${fmt(room.bond)}</div>
+                </div>
+                <div class="stat-item">
+                  <div class="stat-item__label">Pending Weeks</div>
+                  <div class="stat-item__value ${room.pending_weeks > 0 ? 'text-warning' : ''}">${room.pending_weeks}</div>
+                </div>
+              </div>
+
+              <div class="room-card__actions">
+                <a href="/tenant/${room.tenant_id}" class="btn btn-sm btn-primary">
+                  <i class="bi bi-journal-text me-1"></i>View Ledger
+                </a>
+                <button class="btn btn-sm btn-outline-secondary" onclick="window.location.href='/add-tenant?edit=${room.tenant_id}'">
+                  <i class="bi bi-pencil me-1"></i>Edit
+                </button>
+              </div>
+            ` : `
+              <div class="text-center py-3">
+                <i class="bi bi-house display-6 text-muted"></i>
+                <p class="text-muted mt-2">This property is vacant</p>
+                <a href="/add-tenant?room=${room.id}&property=${propId}" class="btn btn-sm btn-primary mt-1">
+                  <i class="bi bi-person-plus me-1"></i>Add Tenant
+                </a>
+              </div>
+            `}
+          </div>
+        </div>
+      `);
+    });
+  }
+});
+</script>
+</body>
+</html>
