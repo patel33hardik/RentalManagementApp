@@ -123,18 +123,19 @@
 <%- include('_scripts') %>
 <script>
 $(function() {
+  const prop       = requireProp();
+  if (!prop) return;
+
   const params     = new URLSearchParams(window.location.search);
-  const preRoom    = params.get('room');      // room DB id
-  const propParam  = params.get('property');  // property id
+  const preRoom    = params.get('room');
+  // Use URL property param if provided, otherwise fall back to stored property
+  const propParam  = params.get('property') || prop.id;
   const editId     = params.get('edit');
 
-  // Set smart back link
-  if (propParam) {
-    const backHref = `/rooms?property=${propParam}`;
-    $('#backBtn').attr('href', backHref);
-    $('#cancelBtn').attr('href', backHref);
-  }
-  $('#contextPropertyId').val(propParam || '');
+  const backHref = `/rooms?property=${propParam}`;
+  $('#backBtn').attr('href', backHref);
+  $('#cancelBtn').attr('href', backHref);
+  $('#contextPropertyId').val(propParam);
 
   if (editId) {
     // Edit mode: load tenant first, then load all rooms so we can pre-select

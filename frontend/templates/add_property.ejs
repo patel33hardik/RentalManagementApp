@@ -283,11 +283,10 @@ $(function() {
       data: JSON.stringify(payload),
       success: function(res) {
         if (res.success) {
+          // Auto-select the newly created property
+          setProp({ id: res.data.id, name: payload.name, type: payload.type, address: payload.address || '' });
           showToast('Property created!', 'success');
-          const dest = selectedType === 'rooming'
-            ? `/rooms?property=${res.data.id}`
-            : `/property/${res.data.id}`;
-          setTimeout(() => window.location.href = dest, 900);
+          setTimeout(() => window.location.href = '/dashboard', 900);
         } else {
           showToast(res.error || 'Error creating property', 'error');
           $('#createBtn').prop('disabled', false).html('<i class="bi bi-building-add me-2"></i>Create Property');

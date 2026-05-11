@@ -191,9 +191,13 @@ function isoToday() {
 }
 
 $(function() {
+  const prop = requireProp();
+  if (!prop) return;
+  window._propId = prop.id;
+
   loadAll();
 
-  $.getJSON('/api/tenants', function(res) {
+  $.getJSON(`/api/tenants?property_id=${prop.id}`, function(res) {
     if (!res.success) return;
     res.data.forEach(function(t) {
       $('#bondTenant').append(`<option value="${t.id}">Room ${t.room_number} — ${t.name}</option>`);
@@ -204,7 +208,7 @@ $(function() {
 });
 
 function loadAll() {
-  $.getJSON('/api/bond', function(res) {
+  $.getJSON(`/api/bond?property_id=${window._propId}`, function(res) {
     if (!res.success) return;
     allRows = res.data;
 

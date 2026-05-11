@@ -145,6 +145,10 @@ function isoToday() {
 }
 
 $(function() {
+  const prop = requireProp();
+  if (!prop) return;
+  window._propId = prop.id;
+
   $('#expDate').val(isoToday());
   loadExpenses();
 
@@ -152,6 +156,7 @@ $(function() {
     e.preventDefault();
     const id = $('#expenseId').val();
     const data = {
+      property_id: window._propId,
       date:        $('#expDate').val(),
       description: $('#expDesc').val(),
       category:    $('#expCategory').val(),
@@ -184,7 +189,7 @@ $(function() {
 });
 
 function loadExpenses() {
-  $.getJSON('/api/expenses', function(res) {
+  $.getJSON(`/api/expenses?property_id=${window._propId}`, function(res) {
     if (!res.success) return;
     allExpenses = res.data;
     buildFilterButtons();

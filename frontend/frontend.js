@@ -12,7 +12,7 @@ router.use('/static', express.static(path.join(__dirname, 'static')));
 // ─── Page Routes ──────────────────────────────────────────────────────────────
 
 router.get('/', (req, res) => {
-  res.render('dashboard', { title: 'Dashboard', activePage: 'dashboard' });
+  res.redirect('/properties');
 });
 
 router.get('/dashboard', (req, res) => {

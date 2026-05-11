@@ -72,14 +72,14 @@
 <%- include('_scripts') %>
 <script>
 $(function() {
-  const params     = new URLSearchParams(window.location.search);
-  const filterProp = params.get('property');
+  const prop = requireProp();
+  if (!prop) return;
 
-  if (filterProp) {
-    loadSingleProperty(filterProp);
-  } else {
-    loadAllProperties();
-  }
+  // URL param overrides stored property (used by "Filter" links in all-props view)
+  const params     = new URLSearchParams(window.location.search);
+  const filterProp = params.get('property') || prop.id;
+
+  loadSingleProperty(filterProp);
 
   // ── Single property view ──────────────────────────────────────────────────────
   function loadSingleProperty(propId) {

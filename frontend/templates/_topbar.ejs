@@ -7,5 +7,17 @@
   </div>
   <div class="topbar-actions">
     <span class="topbar-time" id="topbarTime"></span>
+
+    <!-- Property switcher (populated by app.js) -->
+    <div class="dropdown" id="propSwitcher" style="display:none;">
+      <button class="btn btn-sm btn-outline-secondary dropdown-toggle d-flex align-items-center gap-1"
+              type="button" data-bs-toggle="dropdown" aria-expanded="false" style="max-width:200px;">
+        <i class="bi bi-building" style="font-size:13px;flex-shrink:0;"></i>
+        <span id="propSwitcherName" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Property</span>
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end" id="propSwitcherMenu" style="min-width:220px;">
+        <li><span class="dropdown-item-text text-muted small fst-italic">Loading…</span></li>
+      </ul>
+    </div>
   </div>
 </header>
