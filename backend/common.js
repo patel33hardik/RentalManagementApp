@@ -126,9 +126,19 @@ async function initializeDatabase() {
     
     // ─── Schema ───────────────────────────────────────────────────────────────────
     db.exec(`
+      CREATE TABLE IF NOT EXISTS properties (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        name        TEXT NOT NULL,
+        address     TEXT DEFAULT '',
+        type        TEXT NOT NULL DEFAULT 'rooming' CHECK(type IN ('rooming','whole')),
+        notes       TEXT DEFAULT '',
+        created_at  TEXT DEFAULT (datetime('now','localtime'))
+      );
+
       CREATE TABLE IF NOT EXISTS rooms (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        room_number INTEGER NOT NULL UNIQUE,
+        property_id INTEGER REFERENCES properties(id),
+        room_number INTEGER NOT NULL,
         description TEXT DEFAULT ''
       );
 
@@ -174,6 +184,7 @@ async function initializeDatabase() {
 
       CREATE TABLE IF NOT EXISTS expenses (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        property_id INTEGER REFERENCES properties(id),
         date        TEXT NOT NULL,
         description TEXT NOT NULL,
         amount      REAL NOT NULL DEFAULT 0,
@@ -187,6 +198,41 @@ async function initializeDatabase() {
     try { db.exec("ALTER TABLE bond_payments ADD COLUMN refund_date TEXT"); }     catch(e) { /* already exists */ }
     try { db.exec("ALTER TABLE bond_payments ADD COLUMN refund_amount REAL"); }   catch(e) { /* already exists */ }
     try { db.exec("ALTER TABLE bond_payments ADD COLUMN refund_bank_ref TEXT DEFAULT ''"); } catch(e) { /* already exists */ }
+    try { db.exec("ALTER TABLE rooms ADD COLUMN property_id INTEGER REFERENCES properties(id)"); } catch(e) {}
+    try { db.exec("ALTER TABLE expenses ADD COLUMN property_id INTEGER REFERENCES properties(id)"); } catch(e) {}
+
+    // Remove UNIQUE constraint on rooms.room_number (needed for multi-property: each
+    // property starts rooms at 1). SQLite can't DROP CONSTRAINT, so we recreate the table.
+    try {
+      const roomsRow = get("SELECT sql FROM sqlite_master WHERE type='table' AND name='rooms'");
+      if (roomsRow && roomsRow.sql && roomsRow.sql.includes('UNIQUE')) {
+        db.exec("PRAGMA foreign_keys = OFF");
+        db.exec(`
+          CREATE TABLE rooms_new (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            property_id INTEGER REFERENCES properties(id),
+            room_number INTEGER NOT NULL,
+            description TEXT DEFAULT ''
+          );
+          INSERT INTO rooms_new (id, property_id, room_number, description)
+            SELECT id, property_id, room_number, description FROM rooms;
+          DROP TABLE rooms;
+          ALTER TABLE rooms_new RENAME TO rooms;
+        `);
+        db.exec("PRAGMA foreign_keys = ON");
+        console.log('Migrated rooms table: removed UNIQUE constraint on room_number');
+      }
+    } catch(e) { console.error('rooms unique-constraint migration error:', e); }
+
+    // ─── Seed default property for existing installs ──────────────────────────────
+    // If rooms exist but no properties yet, create "My Property" and link all rooms to it
+    const propCount = get("SELECT COUNT(*) as c FROM properties");
+    const roomCount = get("SELECT COUNT(*) as c FROM rooms");
+    if (propCount && propCount.c === 0 && roomCount && roomCount.c > 0) {
+      run(`INSERT INTO properties (name, address, type, notes) VALUES ('My Property', '', 'rooming', 'Default property (auto-created)')`);
+      run(`UPDATE rooms SET property_id = (SELECT id FROM properties ORDER BY id LIMIT 1) WHERE property_id IS NULL`);
+      console.log('Created default property and linked existing rooms');
+    }
 
     // Set up auto-save every 10 seconds
     if (saveTimer) clearInterval(saveTimer);
@@ -217,6 +263,21 @@ function reinitializeDb(buffer) {
   try { db.exec("ALTER TABLE bond_payments ADD COLUMN refund_date TEXT"); }             catch(e) {}
   try { db.exec("ALTER TABLE bond_payments ADD COLUMN refund_amount REAL"); }           catch(e) {}
   try { db.exec("ALTER TABLE bond_payments ADD COLUMN refund_bank_ref TEXT DEFAULT ''"); } catch(e) {}
+  try { db.exec("ALTER TABLE rooms ADD COLUMN property_id INTEGER REFERENCES properties(id)"); } catch(e) {}
+  try { db.exec("ALTER TABLE expenses ADD COLUMN property_id INTEGER REFERENCES properties(id)"); } catch(e) {}
+  try {
+    const roomsRow = get("SELECT sql FROM sqlite_master WHERE type='table' AND name='rooms'");
+    if (roomsRow && roomsRow.sql && roomsRow.sql.includes('UNIQUE')) {
+      db.exec("PRAGMA foreign_keys = OFF");
+      db.exec(`
+        CREATE TABLE rooms_new (id INTEGER PRIMARY KEY AUTOINCREMENT, property_id INTEGER REFERENCES properties(id), room_number INTEGER NOT NULL, description TEXT DEFAULT '');
+        INSERT INTO rooms_new (id, property_id, room_number, description) SELECT id, property_id, room_number, description FROM rooms;
+        DROP TABLE rooms;
+        ALTER TABLE rooms_new RENAME TO rooms;
+      `);
+      db.exec("PRAGMA foreign_keys = ON");
+    }
+  } catch(e) {}
   saveDatabase();
   saveTimer = setInterval(saveDatabase, 10000);
 }
