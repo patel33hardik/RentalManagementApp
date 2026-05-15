@@ -99,9 +99,36 @@ app.post('/api/properties', (req, res) => {
 
 app.put('/api/properties/:id', (req, res) => {
   try {
-    const { name, address, notes } = req.body;
-    run(`UPDATE properties SET name=?, address=?, notes=? WHERE id=?`,
-      [name, address || '', notes || '', req.params.id]);
+    const { name, address, notes, type } = req.body;
+    const propId = req.params.id;
+
+    if (type) {
+      const existing = get(`SELECT type FROM properties WHERE id=?`, [propId]);
+      if (!existing) return res.status(404).json({ success: false, error: 'Property not found' });
+
+      if (type !== existing.type) {
+        if (type === 'rooming') {
+          // whole → rooming: clear the single room's 'Whole Property' description
+          run(`UPDATE rooms SET description='' WHERE property_id=? AND description='Whole Property'`, [propId]);
+        } else {
+          // rooming → whole: only allowed if exactly 1 room exists
+          const roomCount = get(`SELECT COUNT(*) as c FROM rooms WHERE property_id=?`, [propId]);
+          if (roomCount && roomCount.c > 1) {
+            return res.status(400).json({
+              success: false,
+              error: `Cannot convert to Whole Property — this property has ${roomCount.c} rooms. Remove extra rooms first.`
+            });
+          }
+          run(`UPDATE rooms SET description='Whole Property' WHERE property_id=?`, [propId]);
+        }
+      }
+    }
+
+    run(`UPDATE properties SET name=?, address=?, notes=?${type ? ', type=?' : ''} WHERE id=?`,
+      type
+        ? [name, address || '', notes || '', type, propId]
+        : [name, address || '', notes || '', propId]
+    );
     res.json({ success: true, message: 'Property updated' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -614,23 +641,25 @@ app.get('/api/dashboard', (req, res) => {
 // Income Summary — monthly breakdown of ledger entries
 app.get('/api/reports/income-summary', (req, res) => {
   try {
-    const { from, to } = req.query;
+    const { from, to, property_id } = req.query;
     const params = [];
+    const join  = property_id ? 'JOIN tenants _t ON _t.id = l.tenant_id JOIN rooms _r ON _r.id = _t.room_id' : '';
     let where = 'WHERE 1=1';
-    if (from) { where += ' AND start_date >= ?'; params.push(from); }
-    if (to)   { where += ' AND start_date <= ?'; params.push(to); }
+    if (from)        { where += ' AND l.start_date >= ?'; params.push(from); }
+    if (to)          { where += ' AND l.start_date <= ?'; params.push(to); }
+    if (property_id) { where += ' AND _r.property_id = ?'; params.push(property_id); }
 
     const rows = all(`
       SELECT
-        strftime('%Y-%m', start_date) as month,
-        COALESCE(SUM(CASE WHEN status = '✓ Paid'  THEN COALESCE(amount,0) ELSE 0 END), 0) as paid_amount,
-        COALESCE(SUM(CASE WHEN status = 'Pending'  THEN COALESCE(amount,0) ELSE 0 END), 0) as pending_amount,
-        COALESCE(SUM(CASE WHEN status = 'Waived'   THEN COALESCE(amount,0) ELSE 0 END), 0) as waived_amount,
-        COUNT(CASE WHEN status = '✓ Paid'  THEN 1 END) as paid_count,
-        COUNT(CASE WHEN status = 'Pending'  THEN 1 END) as pending_count,
-        COUNT(CASE WHEN status = 'Waived'   THEN 1 END) as waived_count,
+        strftime('%Y-%m', l.start_date) as month,
+        COALESCE(SUM(CASE WHEN l.status = '✓ Paid'  THEN COALESCE(l.amount,0) ELSE 0 END), 0) as paid_amount,
+        COALESCE(SUM(CASE WHEN l.status = 'Pending'  THEN COALESCE(l.amount,0) ELSE 0 END), 0) as pending_amount,
+        COALESCE(SUM(CASE WHEN l.status = 'Waived'   THEN COALESCE(l.amount,0) ELSE 0 END), 0) as waived_amount,
+        COUNT(CASE WHEN l.status = '✓ Paid'  THEN 1 END) as paid_count,
+        COUNT(CASE WHEN l.status = 'Pending'  THEN 1 END) as pending_count,
+        COUNT(CASE WHEN l.status = 'Waived'   THEN 1 END) as waived_count,
         COUNT(*) as total_count
-      FROM ledger ${where}
+      FROM ledger l ${join} ${where}
       GROUP BY month
       ORDER BY month DESC
     `, params);
@@ -681,21 +710,25 @@ app.get('/api/reports/rent-collection', (req, res) => {
 // Profit & Loss — monthly income vs expenses
 app.get('/api/reports/profit-loss', (req, res) => {
   try {
-    const { from, to } = req.query;
+    const { from, to, property_id } = req.query;
+
     const lParams = [];
+    const lJoin  = property_id ? 'JOIN tenants _t ON _t.id = l.tenant_id JOIN rooms _r ON _r.id = _t.room_id' : '';
     let lWhere = 'WHERE 1=1';
-    if (from) { lWhere += ' AND start_date >= ?'; lParams.push(from); }
-    if (to)   { lWhere += ' AND start_date <= ?'; lParams.push(to); }
+    if (from)        { lWhere += ' AND l.start_date >= ?'; lParams.push(from); }
+    if (to)          { lWhere += ' AND l.start_date <= ?'; lParams.push(to); }
+    if (property_id) { lWhere += ' AND _r.property_id = ?'; lParams.push(property_id); }
 
     const eParams = [];
     let eWhere = 'WHERE 1=1';
-    if (from) { eWhere += ' AND date >= ?'; eParams.push(from); }
-    if (to)   { eWhere += ' AND date <= ?'; eParams.push(to); }
+    if (from)        { eWhere += ' AND date >= ?'; eParams.push(from); }
+    if (to)          { eWhere += ' AND date <= ?'; eParams.push(to); }
+    if (property_id) { eWhere += ' AND property_id = ?'; eParams.push(property_id); }
 
     const incomeRows = all(`
-      SELECT strftime('%Y-%m', start_date) as month,
-        COALESCE(SUM(CASE WHEN status = '✓ Paid' THEN amount ELSE 0 END), 0) as income
-      FROM ledger ${lWhere} GROUP BY month
+      SELECT strftime('%Y-%m', l.start_date) as month,
+        COALESCE(SUM(CASE WHEN l.status = '✓ Paid' THEN l.amount ELSE 0 END), 0) as income
+      FROM ledger l ${lJoin} ${lWhere} GROUP BY month
     `, lParams);
 
     const expRows = all(`

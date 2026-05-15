@@ -234,6 +234,16 @@ async function initializeDatabase() {
       console.log('Created default property and linked existing rooms');
     }
 
+    // Assign orphaned expenses (property_id IS NULL) to the oldest property.
+    // Expenses added before property-scoping was introduced have no property_id.
+    try {
+      const firstProp = get("SELECT id FROM properties ORDER BY id LIMIT 1");
+      if (firstProp) {
+        const orphaned = run("UPDATE expenses SET property_id = ? WHERE property_id IS NULL", [firstProp.id]);
+        if (orphaned.changes > 0) console.log(`Linked ${orphaned.changes} orphaned expense(s) to property ${firstProp.id}`);
+      }
+    } catch(e) { console.error('expenses property migration error:', e); }
+
     // Set up auto-save every 10 seconds
     if (saveTimer) clearInterval(saveTimer);
     saveTimer = setInterval(saveDatabase, 10000);
@@ -277,6 +287,10 @@ function reinitializeDb(buffer) {
       `);
       db.exec("PRAGMA foreign_keys = ON");
     }
+  } catch(e) {}
+  try {
+    const firstProp = get("SELECT id FROM properties ORDER BY id LIMIT 1");
+    if (firstProp) run("UPDATE expenses SET property_id = ? WHERE property_id IS NULL", [firstProp.id]);
   } catch(e) {}
   saveDatabase();
   saveTimer = setInterval(saveDatabase, 10000);

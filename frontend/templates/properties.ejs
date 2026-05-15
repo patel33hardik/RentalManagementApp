@@ -47,6 +47,7 @@
       </div>
       <div class="modal-body">
         <input type="hidden" id="editPropId">
+        <input type="hidden" id="editPropOriginalType">
         <div class="mb-3">
           <label class="form-label">Property Name <span class="text-danger">*</span></label>
           <input type="text" class="form-control" id="editPropName">
@@ -54,6 +55,14 @@
         <div class="mb-3">
           <label class="form-label">Address</label>
           <input type="text" class="form-control" id="editPropAddress" placeholder="Full address">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Rental Type</label>
+          <select class="form-select" id="editPropType">
+            <option value="rooming">Rooming (multiple rooms)</option>
+            <option value="whole">Whole Property (single tenant)</option>
+          </select>
+          <div class="alert alert-warning mt-2 mb-0 py-2 small" id="typeChangeWarning" style="display:none;"></div>
         </div>
         <div class="mb-0">
           <label class="form-label">Notes</label>
@@ -187,7 +196,7 @@ function loadProperties() {
                   <i class="bi bi-box-arrow-in-right me-1"></i>Open
                 </button>
                 <button class="btn btn-sm btn-outline-secondary"
-                        onclick="openEdit(${p.id},'${escHtml(p.name)}','${escHtml(p.address||'')}','${escHtml(p.notes||'')}')">
+                        onclick="openEdit(${p.id},'${escHtml(p.name)}','${escHtml(p.address||'')}','${escHtml(p.notes||'')}','${p.type}')">
                   <i class="bi bi-pencil"></i>
                 </button>
                 <button class="btn btn-sm btn-outline-danger"
@@ -203,11 +212,14 @@ function loadProperties() {
   });
 }
 
-function openEdit(id, name, address, notes) {
+function openEdit(id, name, address, notes, type) {
   $('#editPropId').val(id);
+  $('#editPropOriginalType').val(type);
   $('#editPropName').val(name);
   $('#editPropAddress').val(address);
   $('#editPropNotes').val(notes);
+  $('#editPropType').val(type);
+  $('#typeChangeWarning').hide().text('');
   new bootstrap.Modal(document.getElementById('editModal')).show();
 }
 
@@ -220,18 +232,32 @@ function openDelete(id, name) {
 $(function() {
   loadProperties();
 
+  $('#editPropType').on('change', function() {
+    const orig = $('#editPropOriginalType').val();
+    const next = $(this).val();
+    const warn = $('#typeChangeWarning');
+    if (next === orig) {
+      warn.hide().text('');
+    } else if (next === 'rooming') {
+      warn.show().html('<i class="bi bi-info-circle me-1"></i>The existing room will become Room 1. You can add more rooms from the Rooms page.');
+    } else {
+      warn.show().html('<i class="bi bi-exclamation-triangle me-1"></i>Only allowed if this property has exactly 1 room. Remove extra rooms first if needed.');
+    }
+  });
+
   $('#editSaveBtn').on('click', function() {
     const id   = $('#editPropId').val();
     const name = $('#editPropName').val().trim();
+    const type = $('#editPropType').val();
     if (!name) { showToast('Name is required', 'error'); return; }
     $.ajax({
       url: `/api/properties/${id}`, method: 'PUT', contentType: 'application/json',
-      data: JSON.stringify({ name, address: $('#editPropAddress').val().trim(), notes: $('#editPropNotes').val().trim() }),
+      data: JSON.stringify({ name, address: $('#editPropAddress').val().trim(), notes: $('#editPropNotes').val().trim(), type }),
       success: function(res) {
         if (res.success) {
           // Update localStorage if this is the active property
           const cur = getProp();
-          if (cur && cur.id == id) setProp({ ...cur, name, address: $('#editPropAddress').val().trim() });
+          if (cur && cur.id == id) setProp({ ...cur, name, type, address: $('#editPropAddress').val().trim() });
           bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
           showToast('Property updated', 'success');
           loadProperties();

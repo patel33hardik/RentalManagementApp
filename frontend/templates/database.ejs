@@ -30,7 +30,12 @@
 
     <ul class="nav db-tabs" id="dbTabs">
       <li class="nav-item">
-        <a class="nav-link active" data-bs-toggle="tab" href="#tabRooms">
+        <a class="nav-link active" data-bs-toggle="tab" href="#tabProperties">
+          <i class="bi bi-building me-1"></i>Properties
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tabRooms">
           <i class="bi bi-door-open me-1"></i>Rooms
         </a>
       </li>
@@ -63,8 +68,28 @@
 
     <div class="tab-content">
 
+      <!-- ── PROPERTIES ─────────────────────────────────────── -->
+      <div class="tab-pane fade show active" id="tabProperties">
+        <div class="panel">
+          <div class="panel__header">
+            <h2 class="panel__title"><i class="bi bi-building me-2"></i>properties <span class="record-count" id="propertyCount"></span></h2>
+            <button class="btn btn-sm btn-primary" onclick="openPropertyModal()">
+              <i class="bi bi-plus-lg me-1"></i>Add Property
+            </button>
+          </div>
+          <div class="panel__body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover mb-0" id="propertiesTable">
+                <thead><tr><th>ID</th><th>Name</th><th>Address</th><th>Type</th><th>Notes</th><th>Created</th><th class="text-end">Actions</th></tr></thead>
+                <tbody><tr><td colspan="7" class="text-center py-3 text-muted">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ── ROOMS ───────────────────────────────────────────── -->
-      <div class="tab-pane fade show active" id="tabRooms">
+      <div class="tab-pane fade" id="tabRooms">
         <div class="panel">
           <div class="panel__header">
             <h2 class="panel__title"><i class="bi bi-door-open me-2"></i>rooms <span class="record-count" id="roomCount"></span></h2>
@@ -75,8 +100,8 @@
           <div class="panel__body p-0">
             <div class="table-responsive">
               <table class="table table-hover mb-0" id="roomsTable">
-                <thead><tr><th>ID</th><th>Room #</th><th>Description</th><th class="text-end">Actions</th></tr></thead>
-                <tbody><tr><td colspan="4" class="text-center py-3 text-muted">Loading…</td></tr></tbody>
+                <thead><tr><th>ID</th><th>Property</th><th>Room #</th><th>Description</th><th class="text-end">Actions</th></tr></thead>
+                <tbody><tr><td colspan="5" class="text-center py-3 text-muted">Loading…</td></tr></tbody>
               </table>
             </div>
           </div>
@@ -182,12 +207,12 @@
               <table class="table table-hover mb-0" id="expensesTable">
                 <thead>
                   <tr>
-                    <th>ID</th><th>Date</th><th>Description</th><th>Category</th>
+                    <th>ID</th><th>Property</th><th>Date</th><th>Description</th><th>Category</th>
                     <th>Amount</th><th>Notes</th>
                     <th class="text-end">Actions</th>
                   </tr>
                 </thead>
-                <tbody><tr><td colspan="7" class="text-center py-3 text-muted">Loading…</td></tr></tbody>
+                <tbody><tr><td colspan="8" class="text-center py-3 text-muted">Loading…</td></tr></tbody>
               </table>
             </div>
           </div>
@@ -257,6 +282,46 @@
   </main>
 </div>
 
+<!-- ── PROPERTY MODAL ─────────────────────────────────────────── -->
+<div class="modal fade" id="propertyModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="propertyModalTitle">Add Property</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editPropertyId">
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label">Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="editPropertyName">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Address</label>
+            <input type="text" class="form-control" id="editPropertyAddress">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Type</label>
+            <select class="form-select" id="editPropertyType">
+              <option value="rooming">Rooming</option>
+              <option value="whole">Whole Property</option>
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Notes</label>
+            <textarea class="form-control" id="editPropertyNotes" rows="2"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="savePropertyBtn"><i class="bi bi-save me-1"></i>Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── ROOM MODAL ──────────────────────────────────────────────── -->
 <div class="modal fade" id="roomModal" tabindex="-1">
   <div class="modal-dialog modal-sm">
@@ -267,6 +332,10 @@
       </div>
       <div class="modal-body">
         <input type="hidden" id="roomId">
+        <div class="mb-3">
+          <label class="form-label">Property <span class="text-danger">*</span></label>
+          <select class="form-select" id="roomPropertyId"></select>
+        </div>
         <div class="mb-3">
           <label class="form-label">Room Number <span class="text-danger">*</span></label>
           <input type="number" class="form-control" id="roomNumber" min="1">
@@ -462,6 +531,10 @@
       <div class="modal-body">
         <input type="hidden" id="editExpenseId">
         <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label">Property <span class="text-danger">*</span></label>
+            <select class="form-select" id="editExpProperty"></select>
+          </div>
           <div class="col-md-6">
             <label class="form-label">Date <span class="text-danger">*</span></label>
             <input type="date" class="form-control" id="editExpDate">
@@ -501,15 +574,17 @@
 <%- include('_scripts') %>
 <script>
 // ── Modals ───────────────────────────────────────────────────────
-const mRoom    = new bootstrap.Modal('#roomModal');
-const mTenant  = new bootstrap.Modal('#tenantModal');
-const mLedger  = new bootstrap.Modal('#ledgerModal');
-const mBond    = new bootstrap.Modal('#bondModal');
-const mExpense = new bootstrap.Modal('#expenseModal');
+const mProperty = new bootstrap.Modal('#propertyModal');
+const mRoom     = new bootstrap.Modal('#roomModal');
+const mTenant   = new bootstrap.Modal('#tenantModal');
+const mLedger   = new bootstrap.Modal('#ledgerModal');
+const mBond     = new bootstrap.Modal('#bondModal');
+const mExpense  = new bootstrap.Modal('#expenseModal');
 
 // ── Cached data ──────────────────────────────────────────────────
-let roomRows    = [], tenantRows = [], ledgerRows = [], bondRows = [], expenseRows = [];
-let allTenants  = []; // for dropdown population
+let propertyRows = [], roomRows = [], tenantRows = [], ledgerRows = [], bondRows = [], expenseRows = [];
+let allTenants   = [];
+let allProperties = [];
 
 function isoToday() {
   const t = new Date();
@@ -528,6 +603,7 @@ function confirmDelete(label, fn) {
 }
 
 $(function() {
+  loadProperties();
   loadRooms();
   loadTenants();
   loadLedger();
@@ -536,12 +612,109 @@ $(function() {
   loadTenantDropdowns();
   loadBackupSettings();
 
-  $('#saveRoomBtn').on('click',    saveRoom);
-  $('#saveTenantBtn').on('click',  saveTenant);
-  $('#saveLedgerBtn').on('click',  saveLedger);
-  $('#saveBondBtn').on('click',    saveBond);
-  $('#saveExpenseBtn').on('click', saveExpense);
+  $('#savePropertyBtn').on('click', saveProperty);
+  $('#saveRoomBtn').on('click',     saveRoom);
+  $('#saveTenantBtn').on('click',   saveTenant);
+  $('#saveLedgerBtn').on('click',   saveLedger);
+  $('#saveBondBtn').on('click',     saveBond);
+  $('#saveExpenseBtn').on('click',  saveExpense);
 });
+
+// ════════════════════════════════════════════════════════════════
+// PROPERTIES
+// ════════════════════════════════════════════════════════════════
+function loadProperties() {
+  $.getJSON('/api/properties', function(res) {
+    if (!res.success) return;
+    propertyRows  = res.data;
+    allProperties = res.data;
+    $('#propertyCount').text(`(${res.data.length} rows)`);
+    const tbody = $('#propertiesTable tbody').empty();
+    if (!res.data.length) { tbody.html('<tr><td colspan="7" class="text-center text-muted py-3">No properties</td></tr>'); return; }
+    res.data.forEach(function(p) {
+      const typeBadge = p.type === 'rooming'
+        ? `<span class="badge bg-primary">Rooming</span>`
+        : `<span class="badge bg-success">Whole</span>`;
+      tbody.append(`<tr>
+        <td class="text-muted">${p.id}</td>
+        <td class="fw-semibold">${p.name}</td>
+        <td class="text-muted small">${p.address || '—'}</td>
+        <td>${typeBadge}</td>
+        <td class="wrap text-muted small">${p.notes || '—'}</td>
+        <td class="text-muted small">${fmtDate(p.created_at)}</td>
+        <td>${actionBtns(`openPropertyModal(${p.id})`, `deletePropertyRow(${p.id})`)}</td>
+      </tr>`);
+    });
+    // Refresh property dropdowns in room and expense modals
+    populatePropertyDropdowns();
+  });
+}
+
+function populatePropertyDropdowns() {
+  const options = allProperties.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  $('#roomPropertyId').html(options);
+  $('#editExpProperty').html(options);
+}
+
+function openPropertyModal(id) {
+  if (id) {
+    const p = propertyRows.find(x => x.id === id);
+    if (!p) return;
+    $('#propertyModalTitle').text('Edit Property');
+    $('#editPropertyId').val(p.id);
+    $('#editPropertyName').val(p.name);
+    $('#editPropertyAddress').val(p.address || '');
+    $('#editPropertyType').val(p.type);
+    $('#editPropertyNotes').val(p.notes || '');
+  } else {
+    $('#propertyModalTitle').text('Add Property');
+    $('#editPropertyId').val('');
+    $('#editPropertyName').val('');
+    $('#editPropertyAddress').val('');
+    $('#editPropertyType').val('rooming');
+    $('#editPropertyNotes').val('');
+  }
+  mProperty.show();
+}
+
+function saveProperty() {
+  const id   = $('#editPropertyId').val();
+  const name = $('#editPropertyName').val().trim();
+  if (!name) { showToast('Name is required', 'error'); return; }
+  const data = {
+    name,
+    address: $('#editPropertyAddress').val().trim(),
+    type:    $('#editPropertyType').val(),
+    notes:   $('#editPropertyNotes').val().trim(),
+  };
+  const method = id ? 'PUT' : 'POST';
+  const url    = id ? `/api/properties/${id}` : '/api/properties';
+  // New properties need room_count; default to 1 for whole, 1 for rooming (user can add more)
+  if (!id) data.room_count = 1;
+  $.ajax({ url, method, contentType: 'application/json', data: JSON.stringify(data),
+    success: function(res) {
+      if (res.success) {
+        mProperty.hide();
+        showToast(id ? 'Property updated' : 'Property added', 'success');
+        loadProperties(); loadRooms();
+      } else { showToast(res.error || 'Error', 'error'); }
+    }
+  });
+}
+
+function deletePropertyRow(id) {
+  const p = propertyRows.find(x => x.id === id);
+  confirmDelete(`property "${p ? p.name : id}" and ALL its rooms, tenants and ledger records`, function() {
+    $.ajax({ url: `/api/properties/${id}`, method: 'DELETE',
+      success: function(res) {
+        if (res.success) {
+          showToast('Property deleted', 'success');
+          loadProperties(); loadRooms(); loadTenants(); loadLedger(); loadBondPayments(); loadExpenses(); loadTenantDropdowns();
+        } else { showToast(res.error, 'error'); }
+      }
+    });
+  });
+}
 
 // ════════════════════════════════════════════════════════════════
 // ROOMS
@@ -552,10 +725,11 @@ function loadRooms() {
     roomRows = res.data;
     $('#roomCount').text(`(${res.data.length} rows)`);
     const tbody = $('#roomsTable tbody').empty();
-    if (!res.data.length) { tbody.html('<tr><td colspan="4" class="text-center text-muted py-3">No rooms</td></tr>'); return; }
+    if (!res.data.length) { tbody.html('<tr><td colspan="5" class="text-center text-muted py-3">No rooms</td></tr>'); return; }
     res.data.forEach(function(r) {
       tbody.append(`<tr>
         <td class="text-muted">${r.id}</td>
+        <td class="text-muted small">${r.property_name || '—'}</td>
         <td><span class="room-badge">Room ${r.room_number}</span></td>
         <td>${r.description || '—'}</td>
         <td>${actionBtns(`openRoomModal(${r.id})`, `deleteRoom(${r.id})`)}</td>
@@ -570,6 +744,7 @@ function openRoomModal(id) {
     if (!r) return;
     $('#roomModalTitle').text('Edit Room');
     $('#roomId').val(r.id);
+    $('#roomPropertyId').val(r.property_id);
     $('#roomNumber').val(r.room_number);
     $('#roomDesc').val(r.description || '');
   } else {
@@ -583,7 +758,7 @@ function openRoomModal(id) {
 
 function saveRoom() {
   const id = $('#roomId').val();
-  const data = { room_number: $('#roomNumber').val(), description: $('#roomDesc').val() };
+  const data = { property_id: $('#roomPropertyId').val(), room_number: $('#roomNumber').val(), description: $('#roomDesc').val() };
   if (!data.room_number) { showToast('Room number is required', 'error'); return; }
   const method = id ? 'PUT' : 'POST';
   const url    = id ? `/api/rooms/${id}` : '/api/rooms';
@@ -916,10 +1091,11 @@ function loadExpenses() {
     expenseRows = res.data;
     $('#expenseCount').text(`(${res.data.length} rows)`);
     const tbody = $('#expensesTable tbody').empty();
-    if (!res.data.length) { tbody.html('<tr><td colspan="7" class="text-center text-muted py-3">No expenses</td></tr>'); return; }
+    if (!res.data.length) { tbody.html('<tr><td colspan="8" class="text-center text-muted py-3">No expenses</td></tr>'); return; }
     res.data.forEach(function(e) {
       tbody.append(`<tr>
         <td class="text-muted">${e.id}</td>
+        <td class="text-muted small">${e.property_name || '—'}</td>
         <td class="text-muted small">${fmtDate(e.date)}</td>
         <td>${e.description}</td>
         <td><span class="category-tag">${e.category}</span></td>
@@ -937,14 +1113,17 @@ function openExpenseModal(id) {
     if (!e) return;
     $('#expenseModalTitle').text('Edit Expense');
     $('#editExpenseId').val(e.id);
+    $('#editExpProperty').val(e.property_id);
     $('#editExpDate').val(e.date);
     $('#editExpCategory').val(e.category);
     $('#editExpDesc').val(e.description);
     $('#editExpAmount').val(e.amount);
     $('#editExpNotes').val(e.notes || '');
   } else {
+    const cur = getProp();
     $('#expenseModalTitle').text('Add Expense');
     $('#editExpenseId').val('');
+    if (cur) $('#editExpProperty').val(cur.id);
     $('#editExpDate').val(isoToday());
     $('#editExpCategory').val('Utilities');
     $('#editExpDesc').val('');
@@ -957,6 +1136,7 @@ function openExpenseModal(id) {
 function saveExpense() {
   const id = $('#editExpenseId').val();
   const data = {
+    property_id: $('#editExpProperty').val() || null,
     date:        $('#editExpDate').val(),
     description: $('#editExpDesc').val().trim(),
     category:    $('#editExpCategory').val(),
@@ -1060,7 +1240,7 @@ $('#importBtn').on('click', function() {
       showToast('Database imported — reloading data…', 'success');
       $('#importFileInput').val('');
       btn.prop('disabled', true).html('<i class="bi bi-upload me-2"></i>Import &amp; Replace Database');
-      loadRooms(); loadTenants(); loadLedger(); loadBondPayments(); loadExpenses(); loadTenantDropdowns();
+      loadProperties(); loadRooms(); loadTenants(); loadLedger(); loadBondPayments(); loadExpenses(); loadTenantDropdowns();
     } else {
       showToast(res.error || 'Import failed', 'error');
       btn.prop('disabled', false).html('<i class="bi bi-upload me-2"></i>Import &amp; Replace Database');
