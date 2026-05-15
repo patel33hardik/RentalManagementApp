@@ -40,6 +40,28 @@
   </main>
 </div>
 
+<!-- Delete Room Modal -->
+<div class="modal fade" id="deleteRoomModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title text-danger"><i class="bi bi-trash me-2"></i>Delete Room</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-1">Delete <strong id="deleteRoomLabel"></strong>?</p>
+        <p class="text-muted small mb-0">This cannot be undone. Rooms with any tenant history cannot be deleted.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-danger btn-sm" id="deleteRoomConfirmBtn">
+          <i class="bi bi-trash me-1"></i>Delete
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Add Room Modal -->
 <div class="modal fade" id="addRoomModal" tabindex="-1">
   <div class="modal-dialog modal-sm">
@@ -93,21 +115,26 @@ $(function() {
       document.title = prop.name + ' — Rooms';
       $('#pageSubtitle').text(`${rooms.length} room${rooms.length !== 1 ? 's' : ''} · ${prop.type === 'rooming' ? 'Rooming' : 'Whole Property'}`);
 
-      // Header actions
+      // Header actions — vary by property type
       let actions = `<a href="/properties" class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-arrow-left me-1"></i>All Properties
       </a>`;
       if (prop.type === 'rooming') {
-        actions += `<button class="btn btn-sm btn-outline-primary" onclick="openAddRoom(${propId})">
+        actions += `<button class="btn btn-sm btn-primary" onclick="openAddRoom(${propId})">
           <i class="bi bi-plus me-1"></i>Add Room
         </button>`;
+      } else {
+        // Whole property: Add Tenant only when currently vacant
+        const isOccupied = rooms.length > 0 && !!rooms[0].tenant_name;
+        if (!isOccupied) {
+          actions += `<a href="/add-tenant?property=${propId}" class="btn btn-sm btn-primary">
+            <i class="bi bi-person-plus me-2"></i>Add Tenant
+          </a>`;
+        }
       }
-      actions += `<a href="/add-tenant?property=${propId}" class="btn btn-sm btn-primary">
-        <i class="bi bi-person-plus me-2"></i>Add Tenant
-      </a>`;
       $('#headerActions').html(actions);
 
-      renderRoomCards($('#roomCards'), rooms, propId);
+      renderRoomCards($('#roomCards'), rooms, propId, prop.type);
     });
   }
 
@@ -161,13 +188,13 @@ $(function() {
             <div class="row g-4" id="${groupId}"></div>
           </div>
         `);
-        renderRoomCards($(`#${groupId}`), propRooms, prop.id);
+        renderRoomCards($(`#${groupId}`), propRooms, prop.id, prop.type);
       });
     });
   }
 
   // ── Shared room card renderer ─────────────────────────────────────────────────
-  function renderRoomCards(container, rooms, propId) {
+  function renderRoomCards(container, rooms, propId, propType) {
     container.empty();
 
     if (rooms.length === 0) {
@@ -234,9 +261,17 @@ $(function() {
                 <div class="text-center py-3">
                   <i class="bi bi-door-open display-6 text-muted"></i>
                   <p class="text-muted mt-2">This room is vacant</p>
-                  <a href="/add-tenant?room=${room.id}&property=${propId}" class="btn btn-sm btn-primary mt-1">
-                    <i class="bi bi-person-plus me-1"></i>Add Tenant
-                  </a>
+                  <div class="d-flex gap-2 justify-content-center mt-1">
+                    ${propType !== 'whole' ? `
+                      <a href="/add-tenant?room=${room.id}&property=${propId}" class="btn btn-sm btn-primary">
+                        <i class="bi bi-person-plus me-1"></i>Add Tenant
+                      </a>
+                      <button class="btn btn-sm btn-outline-danger"
+                              onclick="openDeleteRoom(${room.id}, ${propId}, 'Room ${room.room_number}${room.description ? ' — ' + room.description : ''}')">
+                        <i class="bi bi-trash"></i>
+                      </button>
+                    ` : ''}
+                  </div>
                 </div>
               `}
             </div>
@@ -245,6 +280,25 @@ $(function() {
       `);
     });
   }
+
+  // ── Delete Room modal ─────────────────────────────────────────────────────────
+  $('#deleteRoomConfirmBtn').on('click', function() {
+    const roomId = $('#deleteRoomModal').data('roomId');
+    const propId = $('#deleteRoomModal').data('propId');
+    if (!roomId) return;
+    $.ajax({
+      url: `/api/rooms/${roomId}`, method: 'DELETE',
+      success: function(res) {
+        bootstrap.Modal.getInstance(document.getElementById('deleteRoomModal')).hide();
+        if (res.success) {
+          showToast('Room deleted', 'success');
+          loadSingleProperty(propId);
+        } else {
+          showToast(res.error || 'Error deleting room', 'error');
+        }
+      }
+    });
+  });
 
   // ── Add Room modal ────────────────────────────────────────────────────────────
   $('#addRoomSaveBtn').on('click', function() {
@@ -270,6 +324,12 @@ $(function() {
     });
   });
 });
+
+function openDeleteRoom(roomId, propId, label) {
+  $('#deleteRoomLabel').text(label);
+  $('#deleteRoomModal').data('roomId', roomId).data('propId', propId);
+  new bootstrap.Modal(document.getElementById('deleteRoomModal')).show();
+}
 
 function openAddRoom(propId) {
   $('#addRoomPropertyId').val(propId);
