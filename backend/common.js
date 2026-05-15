@@ -269,12 +269,27 @@ function reinitializeDb(buffer) {
   if (saveTimer) clearInterval(saveTimer);
   db = new SQL.Database(new Uint8Array(buffer));
   db.exec("PRAGMA foreign_keys = ON");
-  // Re-run migrations in case the imported DB predates schema additions
+
+  // Ensure properties table exists (old DBs predate this table)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS properties (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      name        TEXT NOT NULL,
+      address     TEXT DEFAULT '',
+      type        TEXT NOT NULL DEFAULT 'rooming' CHECK(type IN ('rooming','whole')),
+      notes       TEXT DEFAULT '',
+      created_at  TEXT DEFAULT (datetime('now','localtime'))
+    );
+  `);
+
+  // Re-run column migrations in case the imported DB predates schema additions
   try { db.exec("ALTER TABLE bond_payments ADD COLUMN refund_date TEXT"); }             catch(e) {}
   try { db.exec("ALTER TABLE bond_payments ADD COLUMN refund_amount REAL"); }           catch(e) {}
   try { db.exec("ALTER TABLE bond_payments ADD COLUMN refund_bank_ref TEXT DEFAULT ''"); } catch(e) {}
   try { db.exec("ALTER TABLE rooms ADD COLUMN property_id INTEGER REFERENCES properties(id)"); } catch(e) {}
   try { db.exec("ALTER TABLE expenses ADD COLUMN property_id INTEGER REFERENCES properties(id)"); } catch(e) {}
+
+  // Remove UNIQUE constraint on rooms.room_number if present
   try {
     const roomsRow = get("SELECT sql FROM sqlite_master WHERE type='table' AND name='rooms'");
     if (roomsRow && roomsRow.sql && roomsRow.sql.includes('UNIQUE')) {
@@ -288,10 +303,24 @@ function reinitializeDb(buffer) {
       db.exec("PRAGMA foreign_keys = ON");
     }
   } catch(e) {}
+
+  // Seed default property if rooms exist but no properties (old DB migration)
+  try {
+    const propCount = get("SELECT COUNT(*) as c FROM properties");
+    const roomCount = get("SELECT COUNT(*) as c FROM rooms");
+    if (propCount && propCount.c === 0 && roomCount && roomCount.c > 0) {
+      run(`INSERT INTO properties (name, address, type, notes) VALUES ('My Property', '', 'rooming', 'Default property (auto-created)')`);
+      run(`UPDATE rooms SET property_id = (SELECT id FROM properties ORDER BY id LIMIT 1) WHERE property_id IS NULL`);
+      console.log('Import: created default property and linked existing rooms');
+    }
+  } catch(e) { console.error('Import: property seed error:', e); }
+
+  // Link orphaned expenses to first property
   try {
     const firstProp = get("SELECT id FROM properties ORDER BY id LIMIT 1");
     if (firstProp) run("UPDATE expenses SET property_id = ? WHERE property_id IS NULL", [firstProp.id]);
   } catch(e) {}
+
   saveDatabase();
   saveTimer = setInterval(saveDatabase, 10000);
 }
