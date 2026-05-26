@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>People Registry — Rental Manager</title>
+  <link rel="stylesheet" href="/common/thirdparty/bootstrap/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/common/thirdparty/bootstrap/css/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+
+<%- include('_sidebar', { activePage: 'people' }) %>
+
+<div class="main-wrapper" id="mainWrapper">
+  <%- include('_topbar', { title: 'People Registry' }) %>
+
+  <main class="page-content">
+
+    <div class="panel">
+      <div class="panel__header">
+        <h2 class="panel__title">
+          <i class="bi bi-person-lines-fill me-2"></i>People Registry
+        </h2>
+        <div class="d-flex gap-2 align-items-center">
+          <input type="search" class="form-control form-control-sm" id="searchInput"
+                 placeholder="Search name, mobile, email…" style="width:220px;">
+          <button class="btn btn-sm btn-primary" id="addPersonBtn">
+            <i class="bi bi-person-plus me-1"></i>Add Person
+          </button>
+        </div>
+      </div>
+      <div class="panel__body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0" id="peopleTable">
+            <thead>
+              <tr>
+                <th style="width:56px;"></th>
+                <th>Name</th>
+                <th>Mobile</th>
+                <th>Email</th>
+                <th>Document Type</th>
+                <th>Status</th>
+                <th style="width:100px;"></th>
+              </tr>
+            </thead>
+            <tbody id="peopleBody">
+              <tr><td colspan="7" class="text-center text-muted py-4">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Add / Edit Modal -->
+<div class="modal fade" id="personModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalTitle"><i class="bi bi-person-plus me-2"></i>Add Person</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="personForm" novalidate>
+          <input type="hidden" id="editId">
+
+          <div class="row g-3">
+
+            <!-- Photo upload column -->
+            <div class="col-md-3 text-center">
+              <div id="photoPreviewWrap" class="mb-2">
+                <img id="photoPreview" src="" alt="Photo"
+                     style="width:100px;height:100px;object-fit:cover;border-radius:50%;border:2px solid #dee2e6;display:none;">
+                <div id="photoPlaceholder"
+                     style="width:100px;height:100px;border-radius:50%;border:2px dashed #dee2e6;display:inline-flex;align-items:center;justify-content:center;background:#f8f9fa;">
+                  <i class="bi bi-person fs-1 text-muted"></i>
+                </div>
+              </div>
+              <label class="btn btn-sm btn-outline-secondary w-100">
+                <i class="bi bi-camera me-1"></i>Upload Photo
+                <input type="file" id="photoInput" accept="image/*" style="display:none;">
+              </label>
+              <button type="button" class="btn btn-sm btn-link text-danger p-0 mt-1" id="removePhotoBtn" style="display:none;">
+                Remove photo
+              </button>
+            </div>
+
+            <!-- Fields column -->
+            <div class="col-md-9">
+              <div class="row g-3">
+                <div class="col-12">
+                  <label class="form-label">Full Name <span class="text-danger">*</span></label>
+                  <input type="text" class="form-control" id="personName" placeholder="Full name" required>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Mobile</label>
+                  <input type="tel" class="form-control" id="personMobile" placeholder="e.g. 0412 345 678">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Email</label>
+                  <input type="email" class="form-control" id="personEmail" placeholder="email@example.com">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Document Type</label>
+                  <select class="form-select" id="personDocType">
+                    <option value="">— None —</option>
+                    <option value="Passport">Passport</option>
+                    <option value="Driver Licence">Driver Licence</option>
+                    <option value="National ID">National ID</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Status</label>
+                  <select class="form-select" id="personStatus">
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                  </select>
+                </div>
+                <div class="col-12">
+                  <label class="form-label">Notes</label>
+                  <textarea class="form-control" id="personNotes" rows="2" placeholder="Any notes…"></textarea>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="savePersonBtn">
+          <i class="bi bi-save me-1"></i>Save
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Image lightbox modal -->
+<div class="modal fade" id="photoModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content bg-dark border-0">
+      <div class="modal-header border-0 pb-0">
+        <h6 class="modal-title text-white" id="photoModalName"></h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body text-center p-3">
+        <img id="photoModalImg" src="" alt="ID Photo"
+             style="max-width:100%;max-height:70vh;border-radius:8px;">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete confirm modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteModalTitle">
+          <i class="bi bi-trash me-2 text-danger"></i>Delete Person
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+
+        <!-- Normal confirm state -->
+        <div id="deleteConfirmSection">
+          <p class="mb-0">Delete <strong id="deleteName"></strong>?</p>
+          <p class="text-muted small mb-0">This cannot be undone.</p>
+        </div>
+
+        <!-- Blocked state: shown when API returns associated records -->
+        <div id="deleteBlockedSection" style="display:none;">
+          <div class="alert alert-warning mb-3 py-2">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            <strong id="deleteBlockedName"></strong> cannot be deleted — associated records were found:
+          </div>
+          <table class="table table-sm table-bordered mb-0">
+            <thead class="table-light">
+              <tr><th>Table</th><th class="text-end">Records</th></tr>
+            </thead>
+            <tbody id="deleteBlockedList"></tbody>
+          </table>
+          <p class="text-muted small mt-2 mb-0">
+            Remove or reassign these records before deleting this person.
+          </p>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" id="deleteCancelBtn">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteBtn">
+          <i class="bi bi-trash me-1"></i>Delete
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%- include('_scripts') %>
+<script>
+$(function() {
+
+  let allPeople = [];
+  let deleteTargetId = null;
+  let pendingPhotoData = null;  // base64 string of newly selected photo
+  let pendingPhotoExt  = null;
+  let removeExistingPhoto = false;
+
+  const personModal  = new bootstrap.Modal(document.getElementById('personModal'));
+  const deleteModal  = new bootstrap.Modal(document.getElementById('deleteModal'));
+  const photoModal   = new bootstrap.Modal(document.getElementById('photoModal'));
+
+  // ── Load table ──────────────────────────────────────────────────────────────
+  function loadPeople() {
+    $.getJSON('/api/tenant-profiles', function(res) {
+      if (!res.success) return;
+      allPeople = res.data;
+      renderTable(allPeople);
+    });
+  }
+
+  function renderTable(people) {
+    const tbody = $('#peopleBody');
+    if (!people.length) {
+      tbody.html('<tr><td colspan="7" class="text-center text-muted py-4">No people in the registry yet. Click <strong>Add Person</strong> to get started.</td></tr>');
+      return;
+    }
+    tbody.empty();
+    people.forEach(function(p) {
+      const photo = p.photo_path
+        ? `<img src="/uploads/${p.photo_path}" class="rounded-circle photo-thumb" data-name="${escHtml(p.name)}" data-src="/uploads/${p.photo_path}" style="width:38px;height:38px;object-fit:cover;cursor:pointer;" title="Click to view">`
+        : `<div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center" style="width:38px;height:38px;"><i class="bi bi-person text-white"></i></div>`;
+      const badge = p.status === 'Active'
+        ? '<span class="badge bg-success">Active</span>'
+        : '<span class="badge bg-secondary">Inactive</span>';
+
+      tbody.append(`
+        <tr>
+          <td class="text-center align-middle">${photo}</td>
+          <td class="align-middle fw-semibold">${escHtml(p.name)}</td>
+          <td class="align-middle">${escHtml(p.mobile || '—')}</td>
+          <td class="align-middle">${escHtml(p.email || '—')}</td>
+          <td class="align-middle">${escHtml(p.doc_type || '—')}</td>
+          <td class="align-middle">${badge}</td>
+          <td class="align-middle text-end">
+            <button class="btn btn-sm btn-outline-secondary me-1 edit-btn" data-id="${p.id}" title="Edit">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-danger delete-btn" data-id="${p.id}" data-name="${escHtml(p.name)}" title="Delete">
+              <i class="bi bi-trash"></i>
+            </button>
+          </td>
+        </tr>
+      `);
+    });
+  }
+
+  function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Search ───────────────────────────────────────────────────────────────────
+  $('#searchInput').on('input', function() {
+    const q = $(this).val().toLowerCase();
+    if (!q) { renderTable(allPeople); return; }
+    renderTable(allPeople.filter(p =>
+      (p.name  || '').toLowerCase().includes(q) ||
+      (p.mobile|| '').toLowerCase().includes(q) ||
+      (p.email || '').toLowerCase().includes(q)
+    ));
+  });
+
+  // ── Open Add modal ───────────────────────────────────────────────────────────
+  $('#addPersonBtn').on('click', function() {
+    resetModal();
+    $('#modalTitle').html('<i class="bi bi-person-plus me-2"></i>Add Person');
+    personModal.show();
+  });
+
+  // ── Open Edit modal ──────────────────────────────────────────────────────────
+  $(document).on('click', '.edit-btn', function() {
+    const id = $(this).data('id');
+    $.getJSON(`/api/tenant-profiles/${id}`, function(res) {
+      if (!res.success) return;
+      const p = res.data;
+      resetModal();
+      $('#modalTitle').html('<i class="bi bi-pencil me-2"></i>Edit Person');
+      $('#editId').val(p.id);
+      $('#personName').val(p.name);
+      $('#personMobile').val(p.mobile || '');
+      $('#personEmail').val(p.email || '');
+      $('#personDocType').val(p.doc_type || '');
+      $('#personStatus').val(p.status || 'Active');
+      $('#personNotes').val(p.notes || '');
+      if (p.photo_path) {
+        $('#photoPreview').attr('src', `/uploads/${p.photo_path}`).show();
+        $('#photoPlaceholder').hide();
+        $('#removePhotoBtn').show();
+      }
+      personModal.show();
+    });
+  });
+
+  // ── Photo file input ─────────────────────────────────────────────────────────
+  $('#photoInput').on('change', function() {
+    const file = this.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Photo must be under 5 MB', 'error');
+      this.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const dataUrl = e.target.result;
+      // dataUrl = "data:image/jpeg;base64,XXXX"
+      const parts = dataUrl.split(',');
+      pendingPhotoData = parts[1];
+      const mimeMatch = parts[0].match(/data:image\/([a-zA-Z]+)/);
+      pendingPhotoExt  = mimeMatch ? mimeMatch[1] : 'jpg';
+      removeExistingPhoto = false;
+
+      $('#photoPreview').attr('src', dataUrl).show();
+      $('#photoPlaceholder').hide();
+      $('#removePhotoBtn').show();
+    };
+    reader.readAsDataURL(file);
+  });
+
+  $('#removePhotoBtn').on('click', function() {
+    pendingPhotoData = null;
+    pendingPhotoExt  = null;
+    removeExistingPhoto = true;
+    $('#photoPreview').hide().attr('src', '');
+    $('#photoPlaceholder').show();
+    $(this).hide();
+    $('#photoInput').val('');
+  });
+
+  function resetModal() {
+    $('#personForm')[0].reset();
+    $('#editId').val('');
+    pendingPhotoData = null;
+    pendingPhotoExt  = null;
+    removeExistingPhoto = false;
+    $('#photoPreview').hide().attr('src', '');
+    $('#photoPlaceholder').show();
+    $('#removePhotoBtn').hide();
+    $('#photoInput').val('');
+  }
+
+  // ── Save ─────────────────────────────────────────────────────────────────────
+  $('#savePersonBtn').on('click', function() {
+    const name = $('#personName').val().trim();
+    if (!name) { showToast('Name is required', 'error'); return; }
+
+    const data = {
+      name,
+      mobile:   $('#personMobile').val().trim(),
+      email:    $('#personEmail').val().trim(),
+      doc_type: $('#personDocType').val(),
+      status:   $('#personStatus').val(),
+      notes:    $('#personNotes').val().trim(),
+    };
+
+    if (pendingPhotoData) {
+      data.photo_data = pendingPhotoData;
+      data.photo_ext  = pendingPhotoExt;
+    } else if (removeExistingPhoto) {
+      data.remove_photo = true;
+    }
+
+    const id = $('#editId').val();
+    const method = id ? 'PUT' : 'POST';
+    const url    = id ? `/api/tenant-profiles/${id}` : '/api/tenant-profiles';
+
+    $.ajax({
+      url, method,
+      contentType: 'application/json',
+      data: JSON.stringify(data),
+      success: function(res) {
+        if (res.success) {
+          personModal.hide();
+          showToast(id ? 'Profile updated' : 'Person added', 'success');
+          loadPeople();
+        } else {
+          showToast(res.error || 'Error saving profile', 'error');
+        }
+      },
+      error: function(xhr) {
+        const msg = (xhr.responseJSON && xhr.responseJSON.error) || 'Error saving profile';
+        showToast(msg, 'error');
+      }
+    });
+  });
+
+  // ── Delete ───────────────────────────────────────────────────────────────────
+  function resetDeleteModal() {
+    $('#deleteConfirmSection').show();
+    $('#deleteBlockedSection').hide();
+    $('#deleteBlockedList').empty();
+    $('#confirmDeleteBtn').show().prop('disabled', false);
+    $('#deleteCancelBtn').text('Cancel');
+  }
+
+  document.getElementById('deleteModal').addEventListener('hidden.bs.modal', resetDeleteModal);
+
+  $(document).on('click', '.delete-btn', function() {
+    deleteTargetId = $(this).data('id');
+    const name     = $(this).data('name');
+    $('#deleteName').text(name);
+    $('#deleteBlockedName').text(name);
+    resetDeleteModal();
+    deleteModal.show();
+  });
+
+  $('#confirmDeleteBtn').on('click', function() {
+    if (!deleteTargetId) return;
+    $.ajax({
+      url: `/api/tenant-profiles/${deleteTargetId}`,
+      method: 'DELETE',
+      success: function(res) {
+        deleteModal.hide();
+        showToast('Person deleted', 'success');
+        loadPeople();
+      },
+      error: function(xhr) {
+        const res = xhr.responseJSON || {};
+        if (res.details && res.details.length) {
+          // Show blocked state inside the modal
+          $('#deleteConfirmSection').hide();
+          const tbody = $('#deleteBlockedList').empty();
+          res.details.forEach(function(d) {
+            tbody.append(`<tr><td>${d.table}</td><td class="text-end fw-semibold">${d.count}</td></tr>`);
+          });
+          $('#deleteBlockedSection').show();
+          $('#confirmDeleteBtn').hide();
+          $('#deleteCancelBtn').text('Close');
+        } else {
+          deleteModal.hide();
+          showToast(res.error || 'Error deleting profile', 'error');
+        }
+      }
+    });
+  });
+
+  // ── Photo lightbox ───────────────────────────────────────────────────────────
+  $(document).on('click', '.photo-thumb', function() {
+    $('#photoModalImg').attr('src', $(this).data('src'));
+    $('#photoModalName').text($(this).data('name'));
+    photoModal.show();
+  });
+
+  loadPeople();
+});
+</script>
+</body>
+</html>

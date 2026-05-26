@@ -50,7 +50,7 @@
       </div>
       <div class="modal-body">
         <p class="mb-1">Delete <strong id="deleteRoomLabel"></strong>?</p>
-        <p class="text-muted small mb-0">This cannot be undone. Rooms with any tenant history cannot be deleted.</p>
+        <p class="text-muted small mb-0">This cannot be undone. All past tenant history for this room will also be removed.</p>
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
@@ -256,6 +256,10 @@ $(function() {
                   <button class="btn btn-sm btn-outline-secondary" onclick="editTenant(${room.tenant_id})">
                     <i class="bi bi-pencil me-1"></i>Edit
                   </button>
+                  <button class="btn btn-sm btn-outline-danger" disabled
+                          title="Cannot delete — room has an active tenant">
+                    <i class="bi bi-trash"></i>
+                  </button>
                 </div>
               ` : `
                 <div class="text-center py-3">
@@ -266,11 +270,11 @@ $(function() {
                       <a href="/add-tenant?room=${room.id}&property=${propId}" class="btn btn-sm btn-primary">
                         <i class="bi bi-person-plus me-1"></i>Add Tenant
                       </a>
-                      <button class="btn btn-sm btn-outline-danger"
-                              onclick="openDeleteRoom(${room.id}, ${propId}, 'Room ${room.room_number}${room.description ? ' — ' + room.description : ''}')">
-                        <i class="bi bi-trash"></i>
-                      </button>
                     ` : ''}
+                    <button class="btn btn-sm btn-outline-danger"
+                            onclick="openDeleteRoom(${room.id}, ${propId}, 'Room ${room.room_number}${room.description ? ' — ' + room.description : ''}')">
+                      <i class="bi bi-trash"></i>
+                    </button>
                   </div>
                 </div>
               `}

@@ -37,6 +37,23 @@
 
               <div class="row g-3">
 
+                <!-- People Registry multi-picker (optional) -->
+                <div class="col-12" id="registryPickerGroup">
+                  <label class="form-label">
+                    <i class="bi bi-person-lines-fill me-1 text-muted"></i>Select People from Registry
+                    <small class="text-muted ms-1">(optional — names will be joined in the field below)</small>
+                  </label>
+                  <div id="selectedChips" class="d-flex flex-wrap gap-1 mb-2" style="min-height:10px;"></div>
+                  <div class="border rounded">
+                    <div class="p-2 bg-light border-bottom">
+                      <input type="text" class="form-control form-control-sm" id="profileSearch" placeholder="Search people…">
+                    </div>
+                    <div id="profileCheckList" style="max-height:130px;overflow-y:auto;" class="px-2 py-1">
+                      <div class="text-muted small text-center py-2">Loading registry…</div>
+                    </div>
+                  </div>
+                </div>
+
                 <!-- Room selector: shown for rooming properties, hidden for whole-property -->
                 <div class="col-md-6" id="roomSelectorGroup">
                   <label class="form-label">Room <span class="text-danger">*</span></label>
@@ -126,6 +143,107 @@ $(function() {
   const prop       = requireProp();
   if (!prop) return;
 
+  // ── People Registry multi-picker ────────────────────────────────────────────
+  let allProfiles   = [];   // all profiles returned from API
+  let selectedIds   = {};   // { id: profile_object }
+
+  function rebuildNameField() {
+    const names = Object.values(selectedIds).map(p => p.name);
+    if (names.length) $('#tenantName').val(names.join(', '));
+  }
+
+  function renderChips() {
+    const container = $('#selectedChips');
+    container.empty();
+    Object.values(selectedIds).forEach(function(p) {
+      container.append(
+        `<span class="badge bg-primary d-flex align-items-center gap-1 px-2 py-1 fw-normal" style="font-size:.85rem;">
+          ${escHtml(p.name)}
+          <i class="bi bi-x-circle-fill ms-1 chip-remove" data-pid="${p.id}" style="cursor:pointer;"></i>
+        </span>`
+      );
+    });
+    rebuildNameField();
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function renderCheckList(filter) {
+    const list = $('#profileCheckList');
+    const q = (filter || '').toLowerCase();
+    const visible = allProfiles.filter(p => !q || p.name.toLowerCase().includes(q) || (p.mobile||'').includes(q));
+    if (!visible.length) {
+      list.html('<div class="text-muted small text-center py-2">No people found</div>');
+      return;
+    }
+    list.empty();
+    visible.forEach(function(p) {
+      const checked = selectedIds[p.id] ? 'checked' : '';
+      const sub = [p.mobile, p.email, p.doc_type].filter(Boolean).join(' · ');
+      list.append(`
+        <div class="form-check py-1 border-bottom" style="margin:0;">
+          <input class="form-check-input profile-cb" type="checkbox" id="pcb_${p.id}"
+                 data-id="${p.id}" ${checked}>
+          <label class="form-check-label w-100" for="pcb_${p.id}" style="cursor:pointer;">
+            <span class="fw-semibold">${escHtml(p.name)}</span>
+            ${sub ? `<span class="text-muted small ms-2">${escHtml(sub)}</span>` : ''}
+          </label>
+        </div>
+      `);
+    });
+  }
+
+  function loadRegistry(preSelectedIds) {
+    const editId = new URLSearchParams(window.location.search).get('edit');
+    let url = '/api/tenant-profiles?available=1';
+    if (editId) url += `&editing_tenant=${editId}`;
+
+    $.getJSON(url, function(res) {
+      if (!res.success) return;
+      allProfiles = res.data;
+
+      // Pre-select profiles already linked (edit mode)
+      if (preSelectedIds && preSelectedIds.length) {
+        preSelectedIds.forEach(function(pid) {
+          const p = allProfiles.find(x => x.id === pid);
+          if (p) selectedIds[p.id] = p;
+        });
+        renderChips();
+      }
+
+      renderCheckList('');
+    });
+  }
+
+  // Checkbox toggle
+  $(document).on('change', '.profile-cb', function() {
+    const pid = parseInt($(this).data('id'));
+    const p   = allProfiles.find(x => x.id === pid);
+    if (!p) return;
+    if ($(this).is(':checked')) {
+      selectedIds[pid] = p;
+    } else {
+      delete selectedIds[pid];
+    }
+    renderChips();
+  });
+
+  // Chip remove
+  $(document).on('click', '.chip-remove', function(e) {
+    e.stopPropagation();
+    const pid = parseInt($(this).data('pid'));
+    delete selectedIds[pid];
+    $(`#pcb_${pid}`).prop('checked', false);
+    renderChips();
+  });
+
+  // Search filter
+  $('#profileSearch').on('input', function() {
+    renderCheckList($(this).val());
+  });
+
   const params     = new URLSearchParams(window.location.search);
   const preRoom    = params.get('room');
   // Use URL property param if provided, otherwise fall back to stored property
@@ -161,9 +279,16 @@ $(function() {
         $('#cancelBtn').attr('href', `/property/${t.property_id}`);
       }
     });
+
+    // Load linked profiles for pre-selection
+    $.getJSON(`/api/tenant-profiles?linked_to=${editId}`, function(res) {
+      const preIds = res.success ? res.data.map(p => p.id) : [];
+      loadRegistry(preIds);
+    });
   } else {
     // Add mode: load rooms filtered by property if provided
     loadRooms(propParam, preRoom, null);
+    loadRegistry([]);
   }
 
   // Load rooms from API, optionally filtered by property
@@ -240,6 +365,7 @@ $(function() {
       move_out:    $('#moveOut').val() || null,
       status:      $('#tenantStatus').val(),
       notes:       $('#notes').val(),
+      profile_ids: Object.keys(selectedIds).map(Number),
     };
 
     const propId = $('#contextPropertyId').val();

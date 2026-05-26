@@ -7,7 +7,9 @@
     "start": "electron .",
     "dev": "set NODE_ENV=development && electron .",
     "postinstall": "electron-rebuild -f -w better-sqlite3",
-    "build": "electron-builder"
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac"
   },
   "dependencies": {
     "ejs": "^3.1.9",
@@ -29,7 +31,12 @@
     "compression": "normal",
     "asar": false,
     "win": {
-      "target": "nsis",
+      "target": "portable",
+      "icon": "common/images/icon.png"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.business",
       "icon": "common/images/icon.png"
     },
     "files": [
@@ -37,12 +44,6 @@
       "!node_modules/electron-rebuild/**",
       "!dist/**",
       "!**/*.map"
-    ],
-    "extraResources": [
-      {
-        "from": "db",
-        "to": "db"
-      }
     ]
   }
 }
