@@ -1,5 +1,16 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
+
+// Portable build: store data next to the exe/app instead of in %APPDATA% / ~/Library
+// Must be called before requiring common.js (which reads app.getPath('userData'))
+if (process.env.PORTABLE_EXECUTABLE_DIR) {
+  // Windows portable — electron-builder sets this to the folder containing the .exe
+  app.setPath('userData', process.env.PORTABLE_EXECUTABLE_DIR);
+} else if (app.isPackaged && process.platform === 'darwin') {
+  // Mac — process.execPath is App.app/Contents/MacOS/App, go up 4 levels to reach the folder containing .app
+  app.setPath('userData', path.resolve(process.execPath, '..', '..', '..', '..'));
+}
+
 const { initializeDatabase } = require('./backend/common');
 
 const backendApp = require('./backend/backend');

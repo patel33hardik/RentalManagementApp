@@ -43,6 +43,10 @@ router.get('/add-tenant', (req, res) => {
   res.render('add_tenant', { title: 'Add New Tenant', activePage: 'rooms' });
 });
 
+router.get('/people', (req, res) => {
+  res.render('people', { title: 'People Registry', activePage: 'people' });
+});
+
 router.get('/bond', (req, res) => {
   res.render('bond', { title: 'Bond Manager', activePage: 'bond' });
 });

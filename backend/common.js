@@ -1,10 +1,19 @@
 const initSqlJs = require('sql.js');
 const path = require('path');
 const fs = require('fs');
+const { app } = require('electron');
 
-// Resolve DB path — works both in dev and packaged Electron (asar disabled)
-const dbDir = path.join(__dirname, '..', 'db');
+// In dev: store db in project db/ folder. When packaged (portable): store next to the exe.
+const dbDir = app.isPackaged
+  ? path.join(app.getPath('userData'), 'db')
+  : path.join(__dirname, '..', 'db');
 if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
+
+// Photo uploads directory
+const uploadsDir = app.isPackaged
+  ? path.join(app.getPath('userData'), 'uploads')
+  : path.join(__dirname, '..', 'db', 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 const DB_PATH = path.join(dbDir, 'rental_manager.db');
 
@@ -126,6 +135,25 @@ async function initializeDatabase() {
     
     // ─── Schema ───────────────────────────────────────────────────────────────────
     db.exec(`
+      CREATE TABLE IF NOT EXISTS tenant_profiles (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        name       TEXT NOT NULL,
+        mobile     TEXT DEFAULT '',
+        email      TEXT DEFAULT '',
+        doc_type   TEXT DEFAULT '',
+        photo_path TEXT DEFAULT '',
+        status     TEXT NOT NULL DEFAULT 'Active' CHECK(status IN ('Active','Inactive')),
+        notes      TEXT DEFAULT '',
+        created_at TEXT DEFAULT (datetime('now','localtime'))
+      );
+
+      CREATE TABLE IF NOT EXISTS tenant_profile_links (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id  INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        profile_id INTEGER NOT NULL REFERENCES tenant_profiles(id),
+        UNIQUE(tenant_id, profile_id)
+      );
+
       CREATE TABLE IF NOT EXISTS properties (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
         name        TEXT NOT NULL,
@@ -195,6 +223,7 @@ async function initializeDatabase() {
     `);
 
     // ─── Migrations (safe to run on existing DBs) ─────────────────────────────────
+    try { db.exec("ALTER TABLE tenants ADD COLUMN profile_id INTEGER REFERENCES tenant_profiles(id)"); } catch(e) {}
     try { db.exec("ALTER TABLE bond_payments ADD COLUMN refund_date TEXT"); }     catch(e) { /* already exists */ }
     try { db.exec("ALTER TABLE bond_payments ADD COLUMN refund_amount REAL"); }   catch(e) { /* already exists */ }
     try { db.exec("ALTER TABLE bond_payments ADD COLUMN refund_bank_ref TEXT DEFAULT ''"); } catch(e) { /* already exists */ }
@@ -270,7 +299,26 @@ function reinitializeDb(buffer) {
   db = new SQL.Database(new Uint8Array(buffer));
   db.exec("PRAGMA foreign_keys = ON");
 
-  // Ensure properties table exists (old DBs predate this table)
+  // Ensure new tables exist (old DBs predate these)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tenant_profiles (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      name       TEXT NOT NULL,
+      mobile     TEXT DEFAULT '',
+      email      TEXT DEFAULT '',
+      doc_type   TEXT DEFAULT '',
+      photo_path TEXT DEFAULT '',
+      status     TEXT NOT NULL DEFAULT 'Active' CHECK(status IN ('Active','Inactive')),
+      notes      TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+    CREATE TABLE IF NOT EXISTS tenant_profile_links (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id  INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      profile_id INTEGER NOT NULL REFERENCES tenant_profiles(id),
+      UNIQUE(tenant_id, profile_id)
+    );
+  `);
   db.exec(`
     CREATE TABLE IF NOT EXISTS properties (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -283,6 +331,7 @@ function reinitializeDb(buffer) {
   `);
 
   // Re-run column migrations in case the imported DB predates schema additions
+  try { db.exec("ALTER TABLE tenants ADD COLUMN profile_id INTEGER REFERENCES tenant_profiles(id)"); } catch(e) {}
   try { db.exec("ALTER TABLE bond_payments ADD COLUMN refund_date TEXT"); }             catch(e) {}
   try { db.exec("ALTER TABLE bond_payments ADD COLUMN refund_amount REAL"); }           catch(e) {}
   try { db.exec("ALTER TABLE bond_payments ADD COLUMN refund_bank_ref TEXT DEFAULT ''"); } catch(e) {}
@@ -340,5 +389,6 @@ module.exports = {
   run,
   saveDatabase,
   reinitializeDb,
-  formatCurrency
+  formatCurrency,
+  uploadsDir,
 };

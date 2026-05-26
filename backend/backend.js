@@ -1,7 +1,7 @@
 const express = require('express');
 const path    = require('path');
 const fs      = require('fs');
-const { all, get, run, getDb, reinitializeDb } = require('./common');
+const { all, get, run, getDb, reinitializeDb, uploadsDir } = require('./common');
 
 const SETTINGS_PATH = path.join(__dirname, '..', 'db', 'settings.json');
 
@@ -23,15 +23,170 @@ app.set('views', path.join(__dirname, '..', 'frontend', 'templates'));
 app.set('view engine', 'ejs');
 
 // ─── Middleware ────────────────────────────────────────────────────────────────
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 // Serve common assets (Bootstrap, jQuery, fonts)
 app.use('/common', express.static(path.join(__dirname, '..', 'common')));
 
+// Serve uploaded profile photos
+app.use('/uploads', express.static(uploadsDir));
+
 // Mount frontend router (page routes + static files)
 const frontendRouter = require('../frontend/frontend');
 app.use('/', frontendRouter);
+
+// ─── API: Tenant Profiles (People Registry) ───────────────────────────────────
+
+app.get('/api/tenant-profiles', (req, res) => {
+  try {
+    const { available, linked_to, editing_tenant } = req.query;
+    let query = `SELECT * FROM tenant_profiles`;
+    const params = [];
+
+    if (linked_to) {
+      // Profiles currently linked to a specific tenant
+      query += `
+        WHERE id IN (
+          SELECT profile_id FROM tenant_profile_links WHERE tenant_id = ?
+        )`;
+      params.push(linked_to);
+    } else if (available === '1') {
+      // Active profiles not linked to any active tenancy
+      // If editing an existing tenant, also include profiles already linked to it
+      query += `
+        WHERE status = 'Active'
+        AND id NOT IN (
+          SELECT tpl.profile_id FROM tenant_profile_links tpl
+          JOIN tenants t ON t.id = tpl.tenant_id
+          WHERE t.status = 'Active'
+          ${editing_tenant ? 'AND tpl.tenant_id != ?' : ''}
+        )`;
+      if (editing_tenant) params.push(editing_tenant);
+    }
+
+    query += ' ORDER BY name ASC';
+    res.json({ success: true, data: all(query, params) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/tenant-profiles/:id', (req, res) => {
+  try {
+    const profile = get('SELECT * FROM tenant_profiles WHERE id = ?', [req.params.id]);
+    if (!profile) return res.status(404).json({ success: false, error: 'Profile not found' });
+    res.json({ success: true, data: profile });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/tenant-profiles', (req, res) => {
+  try {
+    const { name, mobile, email, doc_type, photo_data, photo_ext, status, notes } = req.body;
+    if (!name) return res.status(400).json({ success: false, error: 'name is required' });
+
+    let photo_path = '';
+    if (photo_data) {
+      const ext = (photo_ext || 'jpg').replace(/[^a-zA-Z0-9]/g, '');
+      const filename = `profile_${Date.now()}.${ext}`;
+      fs.writeFileSync(path.join(uploadsDir, filename), Buffer.from(photo_data, 'base64'));
+      photo_path = filename;
+    }
+
+    const result = run(
+      `INSERT INTO tenant_profiles (name, mobile, email, doc_type, photo_path, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [name.trim(), mobile || '', email || '', doc_type || '', photo_path, status || 'Active', notes || '']
+    );
+    res.json({ success: true, data: { id: result.lastInsertRowid } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/tenant-profiles/:id', (req, res) => {
+  try {
+    const { name, mobile, email, doc_type, photo_data, photo_ext, remove_photo, status, notes } = req.body;
+    if (!name) return res.status(400).json({ success: false, error: 'name is required' });
+
+    const existing = get('SELECT * FROM tenant_profiles WHERE id = ?', [req.params.id]);
+    if (!existing) return res.status(404).json({ success: false, error: 'Profile not found' });
+
+    let photo_path = existing.photo_path || '';
+    if (photo_data) {
+      if (photo_path) {
+        try { fs.unlinkSync(path.join(uploadsDir, photo_path)); } catch (e) {}
+      }
+      const ext = (photo_ext || 'jpg').replace(/[^a-zA-Z0-9]/g, '');
+      const filename = `profile_${Date.now()}.${ext}`;
+      fs.writeFileSync(path.join(uploadsDir, filename), Buffer.from(photo_data, 'base64'));
+      photo_path = filename;
+    } else if (remove_photo) {
+      if (photo_path) {
+        try { fs.unlinkSync(path.join(uploadsDir, photo_path)); } catch (e) {}
+      }
+      photo_path = '';
+    }
+
+    run(
+      `UPDATE tenant_profiles SET name=?, mobile=?, email=?, doc_type=?, photo_path=?, status=?, notes=? WHERE id=?`,
+      [name.trim(), mobile || '', email || '', doc_type || '', photo_path, status || 'Active', notes || '', req.params.id]
+    );
+    res.json({ success: true, message: 'Profile updated' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/tenant-profiles/:id', (req, res) => {
+  try {
+    // Find all tenants linked to this profile via the junction table
+    const linkedTenants = all(`
+      SELECT t.id, t.name, t.status
+      FROM tenant_profile_links tpl
+      JOIN tenants t ON t.id = tpl.tenant_id
+      WHERE tpl.profile_id = ?
+    `, [req.params.id]);
+
+    if (linkedTenants.length > 0) {
+      const tenantIds = linkedTenants.map(t => t.id);
+
+      const activeCount    = linkedTenants.filter(t => t.status === 'Active').length;
+      const inactiveCount  = linkedTenants.filter(t => t.status !== 'Active').length;
+
+      let ledgerCount = 0;
+      let bondCount   = 0;
+      tenantIds.forEach(tid => {
+        const l = get('SELECT COUNT(*) as c FROM ledger WHERE tenant_id = ?', [tid]);
+        const b = get('SELECT COUNT(*) as c FROM bond_payments WHERE tenant_id = ?', [tid]);
+        if (l) ledgerCount += l.c;
+        if (b) bondCount   += b.c;
+      });
+
+      const details = [];
+      if (activeCount)   details.push({ table: 'Tenants (Active)',  count: activeCount });
+      if (inactiveCount) details.push({ table: 'Tenants (Past)',    count: inactiveCount });
+      if (ledgerCount)   details.push({ table: 'Ledger entries',    count: ledgerCount });
+      if (bondCount)     details.push({ table: 'Bond payments',     count: bondCount });
+
+      return res.status(400).json({
+        success: false,
+        error: 'This person has associated records and cannot be deleted.',
+        details,
+      });
+    }
+
+    const profile = get('SELECT photo_path FROM tenant_profiles WHERE id = ?', [req.params.id]);
+    if (profile && profile.photo_path) {
+      try { fs.unlinkSync(path.join(uploadsDir, profile.photo_path)); } catch (e) {}
+    }
+    run('DELETE FROM tenant_profiles WHERE id = ?', [req.params.id]);
+    res.json({ success: true, message: 'Profile deleted' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // ─── API: Properties ──────────────────────────────────────────────────────────
 
@@ -232,8 +387,18 @@ app.put('/api/rooms/:id', (req, res) => {
 
 app.delete('/api/rooms/:id', (req, res) => {
   try {
-    const tenant = get(`SELECT id FROM tenants WHERE room_id = ?`, [req.params.id]);
-    if (tenant) return res.status(400).json({ success: false, error: 'Cannot delete a room that has tenants. Remove tenants first.' });
+    const activeTenant = get(`SELECT id FROM tenants WHERE room_id = ? AND status = 'Active'`, [req.params.id]);
+    if (activeTenant) return res.status(400).json({ success: false, error: 'Cannot delete a room with an active tenant. Move the tenant out first.' });
+
+    // Clean up any inactive tenant history before deleting the room
+    const pastTenants = all('SELECT id FROM tenants WHERE room_id = ?', [req.params.id]);
+    pastTenants.forEach(t => {
+      run('DELETE FROM ledger WHERE tenant_id = ?', [t.id]);
+      run('DELETE FROM bond_payments WHERE tenant_id = ?', [t.id]);
+      run('DELETE FROM tenant_profile_links WHERE tenant_id = ?', [t.id]);
+      run('DELETE FROM tenants WHERE id = ?', [t.id]);
+    });
+
     run('DELETE FROM rooms WHERE id = ?', [req.params.id]);
     res.json({ success: true, message: 'Room deleted' });
   } catch (err) {
@@ -305,7 +470,7 @@ app.get('/api/tenants/:id', (req, res) => {
 
 app.post('/api/tenants', (req, res) => {
   try {
-    const { room_id, name, weekly_rent, bond, move_in, move_out, notes, status } = req.body;
+    const { room_id, name, weekly_rent, bond, move_in, move_out, notes, status, profile_ids } = req.body;
     if (!room_id || !name || !weekly_rent) {
       return res.status(400).json({ success: false, error: 'room_id, name and weekly_rent are required' });
     }
@@ -350,6 +515,13 @@ app.post('/api/tenants', (req, res) => {
       `, [tenantId, wsISO, weISO, null, `Room${room_id} service`, wsISO]);
     }
 
+    // Link selected profiles via junction table
+    if (Array.isArray(profile_ids) && profile_ids.length) {
+      profile_ids.forEach(pid => {
+        run('INSERT OR IGNORE INTO tenant_profile_links (tenant_id, profile_id) VALUES (?, ?)', [tenantId, pid]);
+      });
+    }
+
     res.json({ success: true, data: { id: tenantId }, message: 'Tenant added and ledger created' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -358,11 +530,20 @@ app.post('/api/tenants', (req, res) => {
 
 app.put('/api/tenants/:id', (req, res) => {
   try {
-    const { name, weekly_rent, bond, move_in, move_out, status, notes } = req.body;
+    const { name, weekly_rent, bond, move_in, move_out, status, notes, profile_ids } = req.body;
     run(`
       UPDATE tenants SET name=?, weekly_rent=?, bond=?, move_in=?, move_out=?, status=?, notes=?
       WHERE id=?
     `, [name, weekly_rent, bond, move_in, move_out, status, notes, req.params.id]);
+
+    // Replace profile links if profile_ids was explicitly sent
+    if (Array.isArray(profile_ids)) {
+      run('DELETE FROM tenant_profile_links WHERE tenant_id = ?', [req.params.id]);
+      profile_ids.forEach(pid => {
+        run('INSERT OR IGNORE INTO tenant_profile_links (tenant_id, profile_id) VALUES (?, ?)', [req.params.id, pid]);
+      });
+    }
+
     res.json({ success: true, message: 'Tenant updated' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -432,6 +613,17 @@ app.put('/api/ledger/:id', (req, res) => {
       req.params.id,
     ]);
     res.json({ success: true, message: 'Ledger entry updated' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/ledger', (req, res) => {
+  try {
+    const { tenant_id } = req.query;
+    if (!tenant_id) return res.status(400).json({ success: false, error: 'tenant_id is required' });
+    const result = run('DELETE FROM ledger WHERE tenant_id = ?', [tenant_id]);
+    res.json({ success: true, deleted: result.changes });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
