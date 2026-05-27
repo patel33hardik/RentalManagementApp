@@ -230,7 +230,10 @@
                 <h2 class="panel__title"><i class="bi bi-folder-check me-2"></i>Backup Location</h2>
               </div>
               <div class="panel__body">
-                <p class="text-muted small mb-3">Set a folder where backups will be saved. Each export creates a file named <code>rental_manager_YYYY-MM-DD.db</code>.</p>
+                <p class="text-muted small mb-3">
+                  Exports a <code>.zip</code> file containing the database, profile photos, and settings —
+                  named <code>rental_manager_YYYY-MM-DD.zip</code>.
+                </p>
                 <div class="mb-3">
                   <label class="form-label">Backup Folder</label>
                   <div class="input-group">
@@ -246,7 +249,7 @@
                     <i class="bi bi-cloud-arrow-down me-2"></i>Export to Folder
                   </button>
                   <a href="/api/db/export" class="btn btn-outline-secondary">
-                    <i class="bi bi-download me-1"></i>Download .db
+                    <i class="bi bi-file-zip me-1"></i>Download .zip
                   </a>
                 </div>
               </div>
@@ -257,19 +260,22 @@
           <div class="col-md-6">
             <div class="panel">
               <div class="panel__header">
-                <h2 class="panel__title"><i class="bi bi-upload me-2"></i>Import Database</h2>
+                <h2 class="panel__title"><i class="bi bi-upload me-2"></i>Restore Backup</h2>
               </div>
               <div class="panel__body">
                 <div class="alert alert-warning d-flex gap-2 mb-3 py-2">
                   <i class="bi bi-exclamation-triangle-fill mt-1 flex-shrink-0"></i>
-                  <span class="small">This will <strong>replace all current data</strong> with the contents of the uploaded file. This cannot be undone.</span>
+                  <span class="small">This will <strong>replace all current data</strong> with the contents of the selected file. This cannot be undone.</span>
                 </div>
                 <div class="mb-3">
-                  <label class="form-label">Select a <code>.db</code> file</label>
-                  <input type="file" class="form-control" id="importFileInput" accept=".db">
+                  <label class="form-label">Select a backup file</label>
+                  <input type="file" class="form-control" id="importFileInput" accept=".zip,.db">
+                  <div class="form-text">
+                    Accepts <code>.zip</code> (full backup — database + photos + settings) or <code>.db</code> (database only, legacy format).
+                  </div>
                 </div>
                 <button class="btn btn-danger" id="importBtn" disabled>
-                  <i class="bi bi-upload me-2"></i>Import &amp; Replace Database
+                  <i class="bi bi-upload me-2"></i>Restore &amp; Replace Data
                 </button>
               </div>
             </div>
@@ -1228,7 +1234,8 @@ $('#importBtn').on('click', function() {
   if (!file) return;
   if (!confirm('Replace ALL current data with this file? This cannot be undone.')) return;
 
-  const btn = $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Importing…');
+  const resetBtn = () => btn.prop('disabled', false).html('<i class="bi bi-upload me-2"></i>Restore &amp; Replace Data');
+  const btn = $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Restoring…');
   fetch('/api/db/import', {
     method: 'POST',
     headers: { 'Content-Type': 'application/octet-stream' },
@@ -1237,18 +1244,18 @@ $('#importBtn').on('click', function() {
   .then(function(r) { return r.json(); })
   .then(function(res) {
     if (res.success) {
-      showToast('Database imported — reloading data…', 'success');
+      showToast(res.message || 'Restored — reloading…', 'success');
       $('#importFileInput').val('');
-      btn.prop('disabled', true).html('<i class="bi bi-upload me-2"></i>Import &amp; Replace Database');
+      btn.prop('disabled', true).html('<i class="bi bi-upload me-2"></i>Restore &amp; Replace Data');
       loadProperties(); loadRooms(); loadTenants(); loadLedger(); loadBondPayments(); loadExpenses(); loadTenantDropdowns();
     } else {
-      showToast(res.error || 'Import failed', 'error');
-      btn.prop('disabled', false).html('<i class="bi bi-upload me-2"></i>Import &amp; Replace Database');
+      showToast(res.error || 'Restore failed', 'error');
+      resetBtn();
     }
   })
   .catch(function() {
-    showToast('Import failed — check the file and try again', 'error');
-    btn.prop('disabled', false).html('<i class="bi bi-upload me-2"></i>Import &amp; Replace Database');
+    showToast('Restore failed — check the file and try again', 'error');
+    resetBtn();
   });
 });
 </script>

@@ -1,6 +1,7 @@
 const express = require('express');
 const path    = require('path');
 const fs      = require('fs');
+const AdmZip  = require('adm-zip');
 const { all, get, run, getDb, reinitializeDb, uploadsDir } = require('./common');
 
 const SETTINGS_PATH = path.join(__dirname, '..', 'db', 'settings.json');
@@ -997,14 +998,37 @@ app.post('/api/settings', (req, res) => {
 
 // ─── API: Database Export / Import ────────────────────────────────────────────
 
+function buildBackupZip() {
+  const zip   = new AdmZip();
+  const stamp = new Date().toISOString().slice(0, 10);
+
+  // Database
+  zip.addFile('rental_manager.db', Buffer.from(getDb().export()));
+
+  // Settings
+  if (fs.existsSync(SETTINGS_PATH)) {
+    zip.addFile('settings.json', fs.readFileSync(SETTINGS_PATH));
+  }
+
+  // Uploads (profile photos)
+  if (fs.existsSync(uploadsDir)) {
+    fs.readdirSync(uploadsDir).forEach(function(file) {
+      const full = path.join(uploadsDir, file);
+      if (fs.statSync(full).isFile()) {
+        zip.addFile(`uploads/${file}`, fs.readFileSync(full));
+      }
+    });
+  }
+
+  return { zip, stamp };
+}
+
 app.get('/api/db/export', (req, res) => {
   try {
-    const data   = getDb().export();
-    const buffer = Buffer.from(data);
-    const stamp  = new Date().toISOString().slice(0, 10);
-    res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="rental_manager_${stamp}.db"`);
-    res.send(buffer);
+    const { zip, stamp } = buildBackupZip();
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="rental_manager_${stamp}.zip"`);
+    res.send(zip.toBuffer());
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -1017,31 +1041,65 @@ app.post('/api/db/export-to-path', (req, res) => {
     if (!backupDir) return res.status(400).json({ success: false, error: 'No backup folder configured' });
     if (!fs.existsSync(backupDir)) return res.status(400).json({ success: false, error: `Folder not found: ${backupDir}` });
 
-    const stamp    = new Date().toISOString().slice(0, 10);
-    const filename = `rental_manager_${stamp}.db`;
-    const filePath = path.join(backupDir, filename);
-
-    const data   = getDb().export();
-    const buffer = Buffer.from(data);
-    fs.writeFileSync(filePath, buffer);
+    const { zip, stamp } = buildBackupZip();
+    const filename = `rental_manager_${stamp}.zip`;
+    zip.writeZip(path.join(backupDir, filename));
 
     settings.last_backup      = new Date().toISOString();
     settings.last_backup_file = filename;
     writeSettings(settings);
 
-    res.json({ success: true, message: `Saved to ${filePath}`, file: filename });
+    res.json({ success: true, message: `Saved to ${path.join(backupDir, filename)}`, file: filename });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-app.post('/api/db/import', express.raw({ type: 'application/octet-stream', limit: '100mb' }), (req, res) => {
+app.post('/api/db/import', express.raw({ type: 'application/octet-stream', limit: '500mb' }), (req, res) => {
   try {
-    if (!req.body || !req.body.length) {
+    const body = req.body;
+    if (!body || !body.length) {
       return res.status(400).json({ success: false, error: 'No file data received' });
     }
-    reinitializeDb(req.body);
-    res.json({ success: true, message: 'Database imported successfully' });
+
+    // Detect ZIP by magic bytes PK\x03\x04
+    const isZip = body[0] === 0x50 && body[1] === 0x4B && body[2] === 0x03 && body[3] === 0x04;
+
+    if (isZip) {
+      const zip     = new AdmZip(body);
+      const dbEntry = zip.getEntry('rental_manager.db');
+      if (!dbEntry) {
+        return res.status(400).json({ success: false, error: 'ZIP does not contain rental_manager.db' });
+      }
+
+      // Restore database
+      reinitializeDb(dbEntry.getData());
+
+      // Restore uploads
+      zip.getEntries().forEach(function(entry) {
+        if (!entry.isDirectory && entry.entryName.startsWith('uploads/')) {
+          const filename = path.basename(entry.entryName);
+          if (filename) fs.writeFileSync(path.join(uploadsDir, filename), entry.getData());
+        }
+      });
+
+      // Restore settings (optional — don't overwrite backup_path etc.)
+      const settingsEntry = zip.getEntry('settings.json');
+      if (settingsEntry) {
+        try {
+          const imported = JSON.parse(settingsEntry.getData().toString('utf8'));
+          const current  = readSettings();
+          // Keep local backup_path; merge everything else
+          writeSettings(Object.assign({}, imported, { backup_path: current.backup_path }));
+        } catch (e) {}
+      }
+
+      res.json({ success: true, message: 'Backup restored from ZIP (database + uploads + settings)' });
+    } else {
+      // Legacy .db file — restore database only
+      reinitializeDb(body);
+      res.json({ success: true, message: 'Database imported successfully (.db format)' });
+    }
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
