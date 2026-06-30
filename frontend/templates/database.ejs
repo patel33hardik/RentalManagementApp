@@ -60,6 +60,16 @@
         </a>
       </li>
       <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tabPeople">
+          <i class="bi bi-person-lines-fill me-1"></i>People
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tabPeopleLinks">
+          <i class="bi bi-link-45deg me-1"></i>People Links
+        </a>
+      </li>
+      <li class="nav-item">
         <a class="nav-link" data-bs-toggle="tab" href="#tabBackup">
           <i class="bi bi-cloud-arrow-down me-1"></i>Backup
         </a>
@@ -213,6 +223,50 @@
                   </tr>
                 </thead>
                 <tbody><tr><td colspan="8" class="text-center py-3 text-muted">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PEOPLE (tenant_profiles) ─────────────────────────── -->
+      <div class="tab-pane fade" id="tabPeople">
+        <div class="panel">
+          <div class="panel__header">
+            <h2 class="panel__title"><i class="bi bi-person-lines-fill me-2"></i>tenant_profiles <span class="record-count" id="peopleCount"></span></h2>
+          </div>
+          <div class="panel__body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover mb-0" id="dbPeopleTable">
+                <thead>
+                  <tr>
+                    <th>ID</th><th>Property</th><th>Name</th><th>Mobile</th><th>Email</th>
+                    <th>Doc Type</th><th>Photo</th><th>Status</th><th>Notes</th><th>Created</th>
+                    <th class="text-end">Actions</th>
+                  </tr>
+                </thead>
+                <tbody><tr><td colspan="11" class="text-center py-3 text-muted">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PEOPLE LINKS (tenant_profile_links) ───────────────── -->
+      <div class="tab-pane fade" id="tabPeopleLinks">
+        <div class="panel">
+          <div class="panel__header">
+            <h2 class="panel__title"><i class="bi bi-link-45deg me-2"></i>tenant_profile_links <span class="record-count" id="peopleLinkCount"></span></h2>
+          </div>
+          <div class="panel__body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover mb-0" id="dbPeopleLinkTable">
+                <thead>
+                  <tr>
+                    <th>ID</th><th>Tenant ID</th><th>Tenant Name</th><th>Profile ID</th><th>Person Name</th>
+                  </tr>
+                </thead>
+                <tbody><tr><td colspan="5" class="text-center py-3 text-muted">Loading…</td></tr></tbody>
               </table>
             </div>
           </div>
@@ -577,6 +631,64 @@
   </div>
 </div>
 
+<!-- ── PEOPLE MODAL ────────────────────────────────────────────── -->
+<div class="modal fade" id="dbPersonModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="dbPersonModalTitle">Edit Person</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editPersonId">
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label">Property</label>
+            <select class="form-select" id="editPersonProperty"></select>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Full Name <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="editPersonName">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Mobile</label>
+            <input type="text" class="form-control" id="editPersonMobile">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Email</label>
+            <input type="text" class="form-control" id="editPersonEmail">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Document Type</label>
+            <select class="form-select" id="editPersonDocType">
+              <option value="">— None —</option>
+              <option value="Passport">Passport</option>
+              <option value="Driver Licence">Driver Licence</option>
+              <option value="National ID">National ID</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Status</label>
+            <select class="form-select" id="editPersonStatus">
+              <option value="Active">Active</option>
+              <option value="Inactive">Inactive</option>
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Notes</label>
+            <textarea class="form-control" id="editPersonNotes" rows="2"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="savePersonDbBtn"><i class="bi bi-save me-1"></i>Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <%- include('_scripts') %>
 <script>
 // ── Modals ───────────────────────────────────────────────────────
@@ -586,9 +698,10 @@ const mTenant   = new bootstrap.Modal('#tenantModal');
 const mLedger   = new bootstrap.Modal('#ledgerModal');
 const mBond     = new bootstrap.Modal('#bondModal');
 const mExpense  = new bootstrap.Modal('#expenseModal');
+const mPerson   = new bootstrap.Modal('#dbPersonModal');
 
 // ── Cached data ──────────────────────────────────────────────────
-let propertyRows = [], roomRows = [], tenantRows = [], ledgerRows = [], bondRows = [], expenseRows = [];
+let propertyRows = [], roomRows = [], tenantRows = [], ledgerRows = [], bondRows = [], expenseRows = [], peopleRows = [];
 let allTenants   = [];
 let allProperties = [];
 
@@ -609,12 +722,13 @@ function confirmDelete(label, fn) {
 }
 
 $(function() {
-  loadProperties();
+  loadProperties(); // also triggers loadPeopleDb() after properties are ready
   loadRooms();
   loadTenants();
   loadLedger();
   loadBondPayments();
   loadExpenses();
+  loadPeopleLinks();
   loadTenantDropdowns();
   loadBackupSettings();
 
@@ -624,6 +738,7 @@ $(function() {
   $('#saveLedgerBtn').on('click',   saveLedger);
   $('#saveBondBtn').on('click',     saveBond);
   $('#saveExpenseBtn').on('click',  saveExpense);
+  $('#savePersonDbBtn').on('click', savePersonDb);
 });
 
 // ════════════════════════════════════════════════════════════════
@@ -651,8 +766,9 @@ function loadProperties() {
         <td>${actionBtns(`openPropertyModal(${p.id})`, `deletePropertyRow(${p.id})`)}</td>
       </tr>`);
     });
-    // Refresh property dropdowns in room and expense modals
+    // Refresh property dropdowns and re-render people table with property names
     populatePropertyDropdowns();
+    loadPeopleDb();
   });
 }
 
@@ -715,7 +831,7 @@ function deletePropertyRow(id) {
       success: function(res) {
         if (res.success) {
           showToast('Property deleted', 'success');
-          loadProperties(); loadRooms(); loadTenants(); loadLedger(); loadBondPayments(); loadExpenses(); loadTenantDropdowns();
+          loadProperties(); loadRooms(); loadTenants(); loadLedger(); loadBondPayments(); loadExpenses(); loadPeopleDb(); loadPeopleLinks(); loadTenantDropdowns();
         } else { showToast(res.error, 'error'); }
       }
     });
@@ -1171,6 +1287,109 @@ function deleteExpenseRow(id) {
 }
 
 // ════════════════════════════════════════════════════════════════
+// PEOPLE (tenant_profiles)
+// ════════════════════════════════════════════════════════════════
+function loadPeopleDb() {
+  $.getJSON('/api/tenant-profiles', function(res) {
+    if (!res.success) return;
+    peopleRows = res.data;
+    $('#peopleCount').text(`(${res.data.length} rows)`);
+    const tbody = $('#dbPeopleTable tbody').empty();
+    if (!res.data.length) { tbody.html('<tr><td colspan="11" class="text-center text-muted py-3">No people</td></tr>'); return; }
+    res.data.forEach(function(p) {
+      const propName = (allProperties.find(x => x.id === p.property_id) || {}).name || '—';
+      const badge = p.status === 'Active'
+        ? `<span class="badge bg-success">Active</span>`
+        : `<span class="badge bg-secondary">Inactive</span>`;
+      const photo = p.photo_path
+        ? `<img src="/uploads/${p.photo_path}" style="width:28px;height:28px;object-fit:cover;border-radius:50%;" title="${p.photo_path}">`
+        : `<span class="text-muted">—</span>`;
+      tbody.append(`<tr>
+        <td class="text-muted">${p.id}</td>
+        <td class="text-muted small">${propName}</td>
+        <td class="fw-semibold">${p.name}</td>
+        <td class="text-muted small">${p.mobile || '—'}</td>
+        <td class="text-muted small">${p.email || '—'}</td>
+        <td class="text-muted small">${p.doc_type || '—'}</td>
+        <td>${photo}</td>
+        <td>${badge}</td>
+        <td class="wrap text-muted small">${p.notes || '—'}</td>
+        <td class="text-muted small">${fmtDate(p.created_at)}</td>
+        <td>${actionBtns(`openPersonDbModal(${p.id})`, `deletePersonDb(${p.id})`)}</td>
+      </tr>`);
+    });
+  });
+}
+
+function loadPeopleLinks() {
+  $.getJSON('/api/tenant-profile-links', function(res) {
+    if (!res.success) return;
+    $('#peopleLinkCount').text(`(${res.data.length} rows)`);
+    const tbody = $('#dbPeopleLinkTable tbody').empty();
+    if (!res.data.length) { tbody.html('<tr><td colspan="5" class="text-center text-muted py-3">No links</td></tr>'); return; }
+    res.data.forEach(function(l) {
+      tbody.append(`<tr>
+        <td class="text-muted">${l.id}</td>
+        <td class="text-muted">${l.tenant_id}</td>
+        <td>${l.tenant_name || '—'}</td>
+        <td class="text-muted">${l.profile_id}</td>
+        <td>${l.profile_name || '—'}</td>
+      </tr>`);
+    });
+  });
+}
+
+function openPersonDbModal(id) {
+  const p = peopleRows.find(x => x.id === id);
+  if (!p) return;
+  $('#dbPersonModalTitle').text('Edit Person — ' + p.name);
+  $('#editPersonId').val(p.id);
+  const options = allProperties.map(x => `<option value="${x.id}">${x.name}</option>`).join('');
+  $('#editPersonProperty').html('<option value="">— None —</option>' + options).val(p.property_id || '');
+  $('#editPersonName').val(p.name);
+  $('#editPersonMobile').val(p.mobile || '');
+  $('#editPersonEmail').val(p.email || '');
+  $('#editPersonDocType').val(p.doc_type || '');
+  $('#editPersonStatus').val(p.status || 'Active');
+  $('#editPersonNotes').val(p.notes || '');
+  mPerson.show();
+}
+
+function savePersonDb() {
+  const id = $('#editPersonId').val();
+  if (!id) return;
+  const name = $('#editPersonName').val().trim();
+  if (!name) { showToast('Name is required', 'error'); return; }
+  const data = {
+    name,
+    mobile:      $('#editPersonMobile').val().trim(),
+    email:       $('#editPersonEmail').val().trim(),
+    doc_type:    $('#editPersonDocType').val(),
+    status:      $('#editPersonStatus').val(),
+    notes:       $('#editPersonNotes').val().trim(),
+    property_id: $('#editPersonProperty').val() || null,
+  };
+  $.ajax({ url: `/api/tenant-profiles/${id}`, method: 'PUT', contentType: 'application/json', data: JSON.stringify(data),
+    success: function(res) {
+      if (res.success) { mPerson.hide(); showToast('Person updated', 'success'); loadPeopleDb(); }
+      else showToast(res.error || 'Error', 'error');
+    }
+  });
+}
+
+function deletePersonDb(id) {
+  const p = peopleRows.find(x => x.id === id);
+  confirmDelete(`person "${p ? p.name : id}"`, function() {
+    $.ajax({ url: `/api/tenant-profiles/${id}`, method: 'DELETE',
+      success: function(res) {
+        if (res.success) { showToast('Person deleted', 'success'); loadPeopleDb(); loadPeopleLinks(); }
+        else showToast(res.error || 'Cannot delete — associated records exist', 'error');
+      }
+    });
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
 // BACKUP — Location + Export
 // ════════════════════════════════════════════════════════════════
 function loadBackupSettings() {
@@ -1247,7 +1466,7 @@ $('#importBtn').on('click', function() {
       showToast(res.message || 'Restored — reloading…', 'success');
       $('#importFileInput').val('');
       btn.prop('disabled', true).html('<i class="bi bi-upload me-2"></i>Restore &amp; Replace Data');
-      loadProperties(); loadRooms(); loadTenants(); loadLedger(); loadBondPayments(); loadExpenses(); loadTenantDropdowns();
+      loadProperties(); loadRooms(); loadTenants(); loadLedger(); loadBondPayments(); loadExpenses(); loadPeopleDb(); loadPeopleLinks(); loadTenantDropdowns();
     } else {
       showToast(res.error || 'Restore failed', 'error');
       resetBtn();

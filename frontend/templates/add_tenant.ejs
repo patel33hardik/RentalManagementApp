@@ -197,7 +197,7 @@ $(function() {
 
   function loadRegistry(preSelectedIds) {
     const editId = new URLSearchParams(window.location.search).get('edit');
-    let url = '/api/tenant-profiles?available=1';
+    let url = `/api/tenant-profiles?available=1&property_id=${propParam}`;
     if (editId) url += `&editing_tenant=${editId}`;
 
     $.getJSON(url, function(res) {

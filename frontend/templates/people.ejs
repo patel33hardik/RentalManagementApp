@@ -21,6 +21,7 @@
       <div class="panel__header">
         <h2 class="panel__title">
           <i class="bi bi-person-lines-fill me-2"></i>People Registry
+          <small class="text-muted fw-normal ms-2 fs-6" id="propLabel"></small>
         </h2>
         <div class="d-flex gap-2 align-items-center">
           <input type="search" class="form-control form-control-sm" id="searchInput"
@@ -206,6 +207,9 @@
 <script>
 $(function() {
 
+  const prop = requireProp();
+  $('#propLabel').text('— ' + prop.name);
+
   let allPeople = [];
   let deleteTargetId = null;
   let pendingPhotoData = null;  // base64 string of newly selected photo
@@ -218,7 +222,7 @@ $(function() {
 
   // ── Load table ──────────────────────────────────────────────────────────────
   function loadPeople() {
-    $.getJSON('/api/tenant-profiles', function(res) {
+    $.getJSON(`/api/tenant-profiles?property_id=${prop.id}`, function(res) {
       if (!res.success) return;
       allPeople = res.data;
       renderTable(allPeople);
@@ -362,11 +366,12 @@ $(function() {
 
     const data = {
       name,
-      mobile:   $('#personMobile').val().trim(),
-      email:    $('#personEmail').val().trim(),
-      doc_type: $('#personDocType').val(),
-      status:   $('#personStatus').val(),
-      notes:    $('#personNotes').val().trim(),
+      mobile:      $('#personMobile').val().trim(),
+      email:       $('#personEmail').val().trim(),
+      doc_type:    $('#personDocType').val(),
+      status:      $('#personStatus').val(),
+      notes:       $('#personNotes').val().trim(),
+      property_id: prop.id,
     };
 
     if (pendingPhotoData) {

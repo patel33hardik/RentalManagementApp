@@ -229,6 +229,7 @@ async function initializeDatabase() {
     try { db.exec("ALTER TABLE bond_payments ADD COLUMN refund_bank_ref TEXT DEFAULT ''"); } catch(e) { /* already exists */ }
     try { db.exec("ALTER TABLE rooms ADD COLUMN property_id INTEGER REFERENCES properties(id)"); } catch(e) {}
     try { db.exec("ALTER TABLE expenses ADD COLUMN property_id INTEGER REFERENCES properties(id)"); } catch(e) {}
+    try { db.exec("ALTER TABLE tenant_profiles ADD COLUMN property_id INTEGER REFERENCES properties(id)"); } catch(e) {}
 
     // Remove UNIQUE constraint on rooms.room_number (needed for multi-property: each
     // property starts rooms at 1). SQLite can't DROP CONSTRAINT, so we recreate the table.
@@ -263,15 +264,16 @@ async function initializeDatabase() {
       console.log('Created default property and linked existing rooms');
     }
 
-    // Assign orphaned expenses (property_id IS NULL) to the oldest property.
-    // Expenses added before property-scoping was introduced have no property_id.
+    // Assign orphaned expenses and tenant_profiles (property_id IS NULL) to the oldest property.
     try {
       const firstProp = get("SELECT id FROM properties ORDER BY id LIMIT 1");
       if (firstProp) {
         const orphaned = run("UPDATE expenses SET property_id = ? WHERE property_id IS NULL", [firstProp.id]);
         if (orphaned.changes > 0) console.log(`Linked ${orphaned.changes} orphaned expense(s) to property ${firstProp.id}`);
+        const orphanedProfiles = run("UPDATE tenant_profiles SET property_id = ? WHERE property_id IS NULL", [firstProp.id]);
+        if (orphanedProfiles.changes > 0) console.log(`Linked ${orphanedProfiles.changes} orphaned profile(s) to property ${firstProp.id}`);
       }
-    } catch(e) { console.error('expenses property migration error:', e); }
+    } catch(e) { console.error('property migration error:', e); }
 
     // Set up auto-save every 10 seconds
     if (saveTimer) clearInterval(saveTimer);
@@ -337,6 +339,7 @@ function reinitializeDb(buffer) {
   try { db.exec("ALTER TABLE bond_payments ADD COLUMN refund_bank_ref TEXT DEFAULT ''"); } catch(e) {}
   try { db.exec("ALTER TABLE rooms ADD COLUMN property_id INTEGER REFERENCES properties(id)"); } catch(e) {}
   try { db.exec("ALTER TABLE expenses ADD COLUMN property_id INTEGER REFERENCES properties(id)"); } catch(e) {}
+  try { db.exec("ALTER TABLE tenant_profiles ADD COLUMN property_id INTEGER REFERENCES properties(id)"); } catch(e) {}
 
   // Remove UNIQUE constraint on rooms.room_number if present
   try {
@@ -364,10 +367,13 @@ function reinitializeDb(buffer) {
     }
   } catch(e) { console.error('Import: property seed error:', e); }
 
-  // Link orphaned expenses to first property
+  // Link orphaned expenses and profiles to first property
   try {
     const firstProp = get("SELECT id FROM properties ORDER BY id LIMIT 1");
-    if (firstProp) run("UPDATE expenses SET property_id = ? WHERE property_id IS NULL", [firstProp.id]);
+    if (firstProp) {
+      run("UPDATE expenses SET property_id = ? WHERE property_id IS NULL", [firstProp.id]);
+      run("UPDATE tenant_profiles SET property_id = ? WHERE property_id IS NULL", [firstProp.id]);
+    }
   } catch(e) {}
 
   saveDatabase();

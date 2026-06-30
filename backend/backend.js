@@ -41,20 +41,19 @@ app.use('/', frontendRouter);
 
 app.get('/api/tenant-profiles', (req, res) => {
   try {
-    const { available, linked_to, editing_tenant } = req.query;
+    const { available, linked_to, editing_tenant, property_id } = req.query;
     let query = `SELECT * FROM tenant_profiles`;
     const params = [];
 
     if (linked_to) {
-      // Profiles currently linked to a specific tenant
+      // Profiles currently linked to a specific tenant — no property filter needed
       query += `
         WHERE id IN (
           SELECT profile_id FROM tenant_profile_links WHERE tenant_id = ?
         )`;
       params.push(linked_to);
     } else if (available === '1') {
-      // Active profiles not linked to any active tenancy
-      // If editing an existing tenant, also include profiles already linked to it
+      // Active profiles not linked to any active tenancy, scoped to property
       query += `
         WHERE status = 'Active'
         AND id NOT IN (
@@ -64,6 +63,16 @@ app.get('/api/tenant-profiles', (req, res) => {
           ${editing_tenant ? 'AND tpl.tenant_id != ?' : ''}
         )`;
       if (editing_tenant) params.push(editing_tenant);
+      if (property_id) {
+        query += ` AND (property_id = ? OR property_id IS NULL)`;
+        params.push(property_id);
+      }
+    } else {
+      // All profiles — filter by property if provided
+      if (property_id) {
+        query += ` WHERE property_id = ?`;
+        params.push(property_id);
+      }
     }
 
     query += ' ORDER BY name ASC';
@@ -85,7 +94,7 @@ app.get('/api/tenant-profiles/:id', (req, res) => {
 
 app.post('/api/tenant-profiles', (req, res) => {
   try {
-    const { name, mobile, email, doc_type, photo_data, photo_ext, status, notes } = req.body;
+    const { name, mobile, email, doc_type, photo_data, photo_ext, status, notes, property_id } = req.body;
     if (!name) return res.status(400).json({ success: false, error: 'name is required' });
 
     let photo_path = '';
@@ -97,8 +106,8 @@ app.post('/api/tenant-profiles', (req, res) => {
     }
 
     const result = run(
-      `INSERT INTO tenant_profiles (name, mobile, email, doc_type, photo_path, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [name.trim(), mobile || '', email || '', doc_type || '', photo_path, status || 'Active', notes || '']
+      `INSERT INTO tenant_profiles (name, mobile, email, doc_type, photo_path, status, notes, property_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [name.trim(), mobile || '', email || '', doc_type || '', photo_path, status || 'Active', notes || '', property_id || null]
     );
     res.json({ success: true, data: { id: result.lastInsertRowid } });
   } catch (err) {
@@ -108,7 +117,7 @@ app.post('/api/tenant-profiles', (req, res) => {
 
 app.put('/api/tenant-profiles/:id', (req, res) => {
   try {
-    const { name, mobile, email, doc_type, photo_data, photo_ext, remove_photo, status, notes } = req.body;
+    const { name, mobile, email, doc_type, photo_data, photo_ext, remove_photo, status, notes, property_id } = req.body;
     if (!name) return res.status(400).json({ success: false, error: 'name is required' });
 
     const existing = get('SELECT * FROM tenant_profiles WHERE id = ?', [req.params.id]);
@@ -131,8 +140,8 @@ app.put('/api/tenant-profiles/:id', (req, res) => {
     }
 
     run(
-      `UPDATE tenant_profiles SET name=?, mobile=?, email=?, doc_type=?, photo_path=?, status=?, notes=? WHERE id=?`,
-      [name.trim(), mobile || '', email || '', doc_type || '', photo_path, status || 'Active', notes || '', req.params.id]
+      `UPDATE tenant_profiles SET name=?, mobile=?, email=?, doc_type=?, photo_path=?, status=?, notes=?, property_id=? WHERE id=?`,
+      [name.trim(), mobile || '', email || '', doc_type || '', photo_path, status || 'Active', notes || '', property_id || null, req.params.id]
     );
     res.json({ success: true, message: 'Profile updated' });
   } catch (err) {
@@ -184,6 +193,21 @@ app.delete('/api/tenant-profiles/:id', (req, res) => {
     }
     run('DELETE FROM tenant_profiles WHERE id = ?', [req.params.id]);
     res.json({ success: true, message: 'Profile deleted' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/tenant-profile-links', (req, res) => {
+  try {
+    const rows = all(`
+      SELECT tpl.id, tpl.tenant_id, t.name AS tenant_name, tpl.profile_id, p.name AS profile_name
+      FROM tenant_profile_links tpl
+      JOIN tenants t ON t.id = tpl.tenant_id
+      JOIN tenant_profiles p ON p.id = tpl.profile_id
+      ORDER BY tpl.id ASC
+    `);
+    res.json({ success: true, data: rows });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
