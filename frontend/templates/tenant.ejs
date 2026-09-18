@@ -232,18 +232,20 @@ function loadTenant() {
 function loadLedger() {
   $.getJSON(`/api/ledger?tenant_id=${TENANT_ID}`, function(res) {
     if (!res.success) return;
-    ledgerRows = res.data;
+    ledgerRows = res.data.slice().sort(function(a, b) {
+      return b.start_date.localeCompare(a.start_date);
+    });
     const tbody = $('#ledgerTable tbody');
     tbody.empty();
 
     let totalPaid = 0, totalPending = 0, paidCount = 0;
 
-    if (res.data.length === 0) {
+    if (ledgerRows.length === 0) {
       tbody.html('<tr><td colspan="7" class="text-center text-muted">No ledger entries yet</td></tr>');
       return;
     }
 
-    res.data.forEach(function(row, i) {
+    ledgerRows.forEach(function(row, i) {
       const isPaid = row.status === '✓ Paid';
       if (isPaid) { totalPaid += (row.amount || 0); paidCount++; }
       else if (row.status === 'Pending') totalPending += 0;
@@ -274,7 +276,7 @@ function loadLedger() {
       `);
     });
 
-    $('#ledgerSummary').text(`${paidCount} weeks paid · ${res.data.length - paidCount} pending`);
+    $('#ledgerSummary').text(`${paidCount} weeks paid · ${ledgerRows.length - paidCount} pending`);
     $('#ledgerTotal').html(`Total Received: <span class="text-success">${fmt(totalPaid)}</span>`);
   });
 }
@@ -367,7 +369,7 @@ function deleteLedger(id) {
 function addWeek() {
   let startIso;
   if (ledgerRows.length > 0) {
-    startIso = addDays(ledgerRows[ledgerRows.length - 1].end_date, 1);
+    startIso = addDays(ledgerRows[0].end_date, 1);
   } else {
     startIso = tenantData.move_in || isoToday();
   }
