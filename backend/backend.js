@@ -2,7 +2,20 @@ const express = require('express');
 const path    = require('path');
 const fs      = require('fs');
 const AdmZip  = require('adm-zip');
+const { execFileSync } = require('child_process');
+const pkg = require('../package.json');
 const { all, get, run, getDb, reinitializeDb, uploadsDir } = require('./common');
+
+// Version = package version + current git commit short hash (falls back to version only)
+let APP_VERSION = `v${pkg.version}`;
+try {
+  const commit = execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+    cwd: path.join(__dirname, '..'),
+    stdio: ['ignore', 'pipe', 'ignore'],
+    encoding: 'utf8',
+  }).trim();
+  if (commit) APP_VERSION += `-${commit}`;
+} catch (e) {}
 
 const SETTINGS_PATH = path.join(__dirname, '..', 'db', 'settings.json');
 
@@ -25,6 +38,12 @@ app.set('view engine', 'ejs');
 
 // ─── Middleware ────────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '15mb' }));
+
+// Expose app version to all templates (used in sidebar footer)
+app.use((req, res, next) => {
+  res.locals.version = APP_VERSION;
+  next();
+});
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 // Serve common assets (Bootstrap, jQuery, fonts)
